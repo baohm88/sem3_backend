@@ -8,6 +8,7 @@
 /Users/baoha/Downloads/mvp-starter/backend/Infrastructure/obj/Debug/net9.0/Infrastructure.AssemblyInfoInputs.cache
 /Users/baoha/Downloads/mvp-starter/backend/Infrastructure/obj/Debug/net9.0/Infrastructure.AssemblyInfo.cs
 /Users/baoha/Downloads/mvp-starter/backend/Infrastructure/obj/Debug/net9.0/Infrastructure.csproj.CoreCompileInputs.cache
+/Users/baoha/Downloads/mvp-starter/backend/Infrastructure/obj/Debug/net9.0/Infrastructure.sourcelink.json
 /Users/baoha/Downloads/mvp-starter/backend/Infrastructure/obj/Debug/net9.0/Infrastr.15EFFBFE.Up2Date
 /Users/baoha/Downloads/mvp-starter/backend/Infrastructure/obj/Debug/net9.0/Infrastructure.dll
 /Users/baoha/Downloads/mvp-starter/backend/Infrastructure/obj/Debug/net9.0/refint/Infrastructure.dll

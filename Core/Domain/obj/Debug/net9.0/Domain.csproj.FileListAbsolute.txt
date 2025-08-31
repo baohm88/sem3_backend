@@ -5,6 +5,7 @@
 /Users/baoha/Downloads/mvp-starter/backend/Core/Domain/obj/Debug/net9.0/Domain.AssemblyInfoInputs.cache
 /Users/baoha/Downloads/mvp-starter/backend/Core/Domain/obj/Debug/net9.0/Domain.AssemblyInfo.cs
 /Users/baoha/Downloads/mvp-starter/backend/Core/Domain/obj/Debug/net9.0/Domain.csproj.CoreCompileInputs.cache
+/Users/baoha/Downloads/mvp-starter/backend/Core/Domain/obj/Debug/net9.0/Domain.sourcelink.json
 /Users/baoha/Downloads/mvp-starter/backend/Core/Domain/obj/Debug/net9.0/Domain.dll
 /Users/baoha/Downloads/mvp-starter/backend/Core/Domain/obj/Debug/net9.0/refint/Domain.dll
 /Users/baoha/Downloads/mvp-starter/backend/Core/Domain/obj/Debug/net9.0/Domain.pdb
