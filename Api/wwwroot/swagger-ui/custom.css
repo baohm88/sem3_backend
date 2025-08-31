@@ -1,0 +1,40 @@
+/* Giảm rối, font dễ đọc */
+:root {
+  --swagger-font-size: 14px;
+}
+html, body { font-family: -apple-system, Inter, Segoe UI, Roboto, sans-serif; }
+
+/* Căn path cho rộng, không bị chữ chạy dọc */
+.swagger-ui .opblock-summary-path {
+  flex-basis: 60% !important;           /* path rộng ra */
+  white-space: nowrap !important;        /* không xuống dòng từng ký tự */
+  overflow: hidden;
+  text-overflow: ellipsis;               /* dài quá thì ... */
+}
+
+/* Cột method nhỏ lại cho gọn */
+.swagger-ui .opblock-summary-method {
+  flex-basis: 90px !important;
+}
+
+/* Ẩn logo topbar xanh của Swagger */
+.topbar { display: none !important; }
+
+/* Card endpoint mềm mại hơn */
+.swagger-ui .opblock {
+  border-radius: 12px;
+  box-shadow: 0 2px 10px rgba(0,0,0,.04);
+  border: 1px solid #eee;
+}
+
+/* Nút Try it out nổi bật */
+.swagger-ui .try-out__btn {
+  border-radius: 999px !important;
+  padding: 6px 14px !important;
+}
+
+/* Bảng params dễ nhìn hơn */
+.swagger-ui table.parameters {
+  border-radius: 10px;
+  overflow: hidden;
+}

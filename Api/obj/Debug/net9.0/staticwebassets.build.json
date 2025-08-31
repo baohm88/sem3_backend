@@ -1,0 +1,362 @@
+{
+  "Version": 1,
+  "Hash": "wWCfurCwmvxBbTR1pJ9Vi4+/6aWN5qUjrpRefo87yeY=",
+  "Source": "Api",
+  "BasePath": "_content/Api",
+  "Mode": "Default",
+  "ManifestType": "Build",
+  "ReferencedProjectsConfiguration": [],
+  "DiscoveryPatterns": [
+    {
+      "Name": "Api/wwwroot",
+      "Source": "Api",
+      "ContentRoot": "/Users/baoha/Downloads/mvp-starter/backend/Api/wwwroot/",
+      "BasePath": "_content/Api",
+      "Pattern": "**"
+    }
+  ],
+  "Assets": [
+    {
+      "Identity": "/Users/baoha/Downloads/mvp-starter/backend/Api/obj/Debug/net9.0/compressed/cdidhjid37-ejkuv129mn.gz",
+      "SourceId": "Api",
+      "SourceType": "Discovered",
+      "ContentRoot": "/Users/baoha/Downloads/mvp-starter/backend/Api/obj/Debug/net9.0/compressed/",
+      "BasePath": "_content/Api",
+      "RelativePath": "swagger-ui/custom#[.{fingerprint=ejkuv129mn}]?.css.gz",
+      "AssetKind": "All",
+      "AssetMode": "All",
+      "AssetRole": "Alternative",
+      "AssetMergeBehavior": "",
+      "AssetMergeSource": "",
+      "RelatedAsset": "/Users/baoha/Downloads/mvp-starter/backend/Api/wwwroot/swagger-ui/custom.css",
+      "AssetTraitName": "Content-Encoding",
+      "AssetTraitValue": "gzip",
+      "Fingerprint": "bwyu8lmmt7",
+      "Integrity": "1Zdvm5+/7CD4l41SL0T3UxG+NNKAt0yUJG5bAsJQ5yY=",
+      "CopyToOutputDirectory": "Never",
+      "CopyToPublishDirectory": "PreserveNewest",
+      "OriginalItemSpec": "/Users/baoha/Downloads/mvp-starter/backend/Api/wwwroot/swagger-ui/custom.css"
+    },
+    {
+      "Identity": "/Users/baoha/Downloads/mvp-starter/backend/Api/wwwroot/swagger-ui/custom.css",
+      "SourceId": "Api",
+      "SourceType": "Discovered",
+      "ContentRoot": "/Users/baoha/Downloads/mvp-starter/backend/Api/wwwroot/",
+      "BasePath": "_content/Api",
+      "RelativePath": "swagger-ui/custom#[.{fingerprint}]?.css",
+      "AssetKind": "All",
+      "AssetMode": "All",
+      "AssetRole": "Primary",
+      "AssetMergeBehavior": "",
+      "AssetMergeSource": "",
+      "RelatedAsset": "",
+      "AssetTraitName": "",
+      "AssetTraitValue": "",
+      "Fingerprint": "ejkuv129mn",
+      "Integrity": "hrnkRyvS5UPIhp4fEnrxanuqcXlMhxGYWV5ilNpbrLc=",
+      "CopyToOutputDirectory": "Never",
+      "CopyToPublishDirectory": "PreserveNewest",
+      "OriginalItemSpec": "wwwroot/swagger-ui/custom.css"
+    }
+  ],
+  "Endpoints": [
+    {
+      "Route": "swagger-ui/custom.css",
+      "AssetFile": "/Users/baoha/Downloads/mvp-starter/backend/Api/obj/Debug/net9.0/compressed/cdidhjid37-ejkuv129mn.gz",
+      "Selectors": [
+        {
+          "Name": "Content-Encoding",
+          "Value": "gzip",
+          "Quality": "0.001620745543"
+        }
+      ],
+      "ResponseHeaders": [
+        {
+          "Name": "Accept-Ranges",
+          "Value": "bytes"
+        },
+        {
+          "Name": "Content-Length",
+          "Value": "616"
+        },
+        {
+          "Name": "ETag",
+          "Value": "\"1Zdvm5+/7CD4l41SL0T3UxG+NNKAt0yUJG5bAsJQ5yY=\""
+        },
+        {
+          "Name": "Last-Modified",
+          "Value": "Sat, 30 Aug 2025 09:10:07 GMT"
+        },
+        {
+          "Name": "Cache-Control",
+          "Value": "no-cache"
+        },
+        {
+          "Name": "Content-Encoding",
+          "Value": "gzip"
+        },
+        {
+          "Name": "Vary",
+          "Value": "Content-Encoding"
+        },
+        {
+          "Name": "Content-Type",
+          "Value": "text/css"
+        },
+        {
+          "Name": "ETag",
+          "Value": "W/\"hrnkRyvS5UPIhp4fEnrxanuqcXlMhxGYWV5ilNpbrLc=\""
+        }
+      ],
+      "EndpointProperties": [
+        {
+          "Name": "integrity",
+          "Value": "sha256-hrnkRyvS5UPIhp4fEnrxanuqcXlMhxGYWV5ilNpbrLc="
+        }
+      ]
+    },
+    {
+      "Route": "swagger-ui/custom.css",
+      "AssetFile": "/Users/baoha/Downloads/mvp-starter/backend/Api/wwwroot/swagger-ui/custom.css",
+      "Selectors": [],
+      "ResponseHeaders": [
+        {
+          "Name": "Accept-Ranges",
+          "Value": "bytes"
+        },
+        {
+          "Name": "Content-Length",
+          "Value": "1078"
+        },
+        {
+          "Name": "Content-Type",
+          "Value": "text/css"
+        },
+        {
+          "Name": "ETag",
+          "Value": "\"hrnkRyvS5UPIhp4fEnrxanuqcXlMhxGYWV5ilNpbrLc=\""
+        },
+        {
+          "Name": "Last-Modified",
+          "Value": "Sat, 30 Aug 2025 09:10:07 GMT"
+        },
+        {
+          "Name": "Cache-Control",
+          "Value": "no-cache"
+        }
+      ],
+      "EndpointProperties": [
+        {
+          "Name": "integrity",
+          "Value": "sha256-hrnkRyvS5UPIhp4fEnrxanuqcXlMhxGYWV5ilNpbrLc="
+        }
+      ]
+    },
+    {
+      "Route": "swagger-ui/custom.css.gz",
+      "AssetFile": "/Users/baoha/Downloads/mvp-starter/backend/Api/obj/Debug/net9.0/compressed/cdidhjid37-ejkuv129mn.gz",
+      "Selectors": [],
+      "ResponseHeaders": [
+        {
+          "Name": "Accept-Ranges",
+          "Value": "bytes"
+        },
+        {
+          "Name": "Content-Length",
+          "Value": "616"
+        },
+        {
+          "Name": "Content-Type",
+          "Value": "text/css"
+        },
+        {
+          "Name": "ETag",
+          "Value": "\"1Zdvm5+/7CD4l41SL0T3UxG+NNKAt0yUJG5bAsJQ5yY=\""
+        },
+        {
+          "Name": "Last-Modified",
+          "Value": "Sat, 30 Aug 2025 09:10:07 GMT"
+        },
+        {
+          "Name": "Cache-Control",
+          "Value": "no-cache"
+        },
+        {
+          "Name": "Content-Encoding",
+          "Value": "gzip"
+        },
+        {
+          "Name": "Vary",
+          "Value": "Content-Encoding"
+        }
+      ],
+      "EndpointProperties": [
+        {
+          "Name": "integrity",
+          "Value": "sha256-1Zdvm5+/7CD4l41SL0T3UxG+NNKAt0yUJG5bAsJQ5yY="
+        }
+      ]
+    },
+    {
+      "Route": "swagger-ui/custom.ejkuv129mn.css",
+      "AssetFile": "/Users/baoha/Downloads/mvp-starter/backend/Api/obj/Debug/net9.0/compressed/cdidhjid37-ejkuv129mn.gz",
+      "Selectors": [
+        {
+          "Name": "Content-Encoding",
+          "Value": "gzip",
+          "Quality": "0.001620745543"
+        }
+      ],
+      "ResponseHeaders": [
+        {
+          "Name": "Accept-Ranges",
+          "Value": "bytes"
+        },
+        {
+          "Name": "Content-Length",
+          "Value": "616"
+        },
+        {
+          "Name": "ETag",
+          "Value": "\"1Zdvm5+/7CD4l41SL0T3UxG+NNKAt0yUJG5bAsJQ5yY=\""
+        },
+        {
+          "Name": "Last-Modified",
+          "Value": "Sat, 30 Aug 2025 09:10:07 GMT"
+        },
+        {
+          "Name": "Cache-Control",
+          "Value": "max-age=31536000, immutable"
+        },
+        {
+          "Name": "Content-Encoding",
+          "Value": "gzip"
+        },
+        {
+          "Name": "Vary",
+          "Value": "Content-Encoding"
+        },
+        {
+          "Name": "Content-Type",
+          "Value": "text/css"
+        },
+        {
+          "Name": "ETag",
+          "Value": "W/\"hrnkRyvS5UPIhp4fEnrxanuqcXlMhxGYWV5ilNpbrLc=\""
+        }
+      ],
+      "EndpointProperties": [
+        {
+          "Name": "fingerprint",
+          "Value": "ejkuv129mn"
+        },
+        {
+          "Name": "label",
+          "Value": "swagger-ui/custom.css"
+        },
+        {
+          "Name": "integrity",
+          "Value": "sha256-hrnkRyvS5UPIhp4fEnrxanuqcXlMhxGYWV5ilNpbrLc="
+        }
+      ]
+    },
+    {
+      "Route": "swagger-ui/custom.ejkuv129mn.css",
+      "AssetFile": "/Users/baoha/Downloads/mvp-starter/backend/Api/wwwroot/swagger-ui/custom.css",
+      "Selectors": [],
+      "ResponseHeaders": [
+        {
+          "Name": "Accept-Ranges",
+          "Value": "bytes"
+        },
+        {
+          "Name": "Content-Length",
+          "Value": "1078"
+        },
+        {
+          "Name": "Content-Type",
+          "Value": "text/css"
+        },
+        {
+          "Name": "ETag",
+          "Value": "\"hrnkRyvS5UPIhp4fEnrxanuqcXlMhxGYWV5ilNpbrLc=\""
+        },
+        {
+          "Name": "Last-Modified",
+          "Value": "Sat, 30 Aug 2025 09:10:07 GMT"
+        },
+        {
+          "Name": "Cache-Control",
+          "Value": "max-age=31536000, immutable"
+        }
+      ],
+      "EndpointProperties": [
+        {
+          "Name": "fingerprint",
+          "Value": "ejkuv129mn"
+        },
+        {
+          "Name": "label",
+          "Value": "swagger-ui/custom.css"
+        },
+        {
+          "Name": "integrity",
+          "Value": "sha256-hrnkRyvS5UPIhp4fEnrxanuqcXlMhxGYWV5ilNpbrLc="
+        }
+      ]
+    },
+    {
+      "Route": "swagger-ui/custom.ejkuv129mn.css.gz",
+      "AssetFile": "/Users/baoha/Downloads/mvp-starter/backend/Api/obj/Debug/net9.0/compressed/cdidhjid37-ejkuv129mn.gz",
+      "Selectors": [],
+      "ResponseHeaders": [
+        {
+          "Name": "Accept-Ranges",
+          "Value": "bytes"
+        },
+        {
+          "Name": "Content-Length",
+          "Value": "616"
+        },
+        {
+          "Name": "Content-Type",
+          "Value": "text/css"
+        },
+        {
+          "Name": "ETag",
+          "Value": "\"1Zdvm5+/7CD4l41SL0T3UxG+NNKAt0yUJG5bAsJQ5yY=\""
+        },
+        {
+          "Name": "Last-Modified",
+          "Value": "Sat, 30 Aug 2025 09:10:07 GMT"
+        },
+        {
+          "Name": "Cache-Control",
+          "Value": "max-age=31536000, immutable"
+        },
+        {
+          "Name": "Content-Encoding",
+          "Value": "gzip"
+        },
+        {
+          "Name": "Vary",
+          "Value": "Content-Encoding"
+        }
+      ],
+      "EndpointProperties": [
+        {
+          "Name": "fingerprint",
+          "Value": "ejkuv129mn"
+        },
+        {
+          "Name": "label",
+          "Value": "swagger-ui/custom.css.gz"
+        },
+        {
+          "Name": "integrity",
+          "Value": "sha256-1Zdvm5+/7CD4l41SL0T3UxG+NNKAt0yUJG5bAsJQ5yY="
+        }
+      ]
+    }
+  ]
+}

@@ -1,0 +1,16 @@
+﻿<Project>
+  <ItemGroup>
+    <StaticWebAssetEndpoint Include="_content/Api/swagger-ui/custom.css">
+      <AssetFile>$([System.IO.Path]::GetFullPath('$(MSBuildThisFileDirectory)..\staticwebassets\swagger-ui\custom.css'))</AssetFile>
+      <Selectors><![CDATA[[]]]></Selectors>
+      <EndpointProperties><![CDATA[[{"Name":"integrity","Value":"sha256-hrnkRyvS5UPIhp4fEnrxanuqcXlMhxGYWV5ilNpbrLc="}]]]></EndpointProperties>
+      <ResponseHeaders><![CDATA[[{"Name":"Accept-Ranges","Value":"bytes"},{"Name":"Cache-Control","Value":"no-cache"},{"Name":"Content-Length","Value":"1078"},{"Name":"Content-Type","Value":"text/css"},{"Name":"ETag","Value":"\u0022hrnkRyvS5UPIhp4fEnrxanuqcXlMhxGYWV5ilNpbrLc=\u0022"},{"Name":"Last-Modified","Value":"Sat, 30 Aug 2025 09:10:07 GMT"}]]]></ResponseHeaders>
+    </StaticWebAssetEndpoint>
+    <StaticWebAssetEndpoint Include="_content/Api/swagger-ui/custom.ejkuv129mn.css">
+      <AssetFile>$([System.IO.Path]::GetFullPath('$(MSBuildThisFileDirectory)..\staticwebassets\swagger-ui\custom.css'))</AssetFile>
+      <Selectors><![CDATA[[]]]></Selectors>
+      <EndpointProperties><![CDATA[[{"Name":"fingerprint","Value":"ejkuv129mn"},{"Name":"integrity","Value":"sha256-hrnkRyvS5UPIhp4fEnrxanuqcXlMhxGYWV5ilNpbrLc="},{"Name":"label","Value":"_content/Api/swagger-ui/custom.css"}]]]></EndpointProperties>
+      <ResponseHeaders><![CDATA[[{"Name":"Accept-Ranges","Value":"bytes"},{"Name":"Cache-Control","Value":"max-age=31536000, immutable"},{"Name":"Content-Length","Value":"1078"},{"Name":"Content-Type","Value":"text/css"},{"Name":"ETag","Value":"\u0022hrnkRyvS5UPIhp4fEnrxanuqcXlMhxGYWV5ilNpbrLc=\u0022"},{"Name":"Last-Modified","Value":"Sat, 30 Aug 2025 09:10:07 GMT"}]]]></ResponseHeaders>
+    </StaticWebAssetEndpoint>
+  </ItemGroup>
+</Project>

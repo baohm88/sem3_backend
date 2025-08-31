@@ -1,0 +1,137 @@
+<?xml version="1.0"?>
+<doc>
+    <assembly>
+        <name>Api</name>
+    </assembly>
+    <members>
+        <member name="P:Api.Contracts.Companies.AddServiceDto.Title">
+            <example>Bike Ride</example>
+        </member>
+        <member name="P:Api.Contracts.Companies.AddServiceDto.Description">
+            <example>Short-distance city ride</example>
+        </member>
+        <member name="P:Api.Contracts.Companies.AddServiceDto.PriceCents">
+            <example>30000</example>
+        </member>
+        <member name="P:Api.Contracts.Companies.AddServiceDto.IsActive">
+            <example>true</example>
+        </member>
+        <member name="T:Api.Contracts.Companies.CompanyDriverDto">
+            <summary>Thông tin driver thuộc company</summary>
+        </member>
+        <member name="P:Api.Contracts.Companies.InviteDriverDto.DriverUserId">
+            <example>68a000000000000000000007</example>
+        </member>
+        <member name="P:Api.Contracts.Companies.InviteDriverDto.BaseSalaryCents">
+            <example>100000</example>
+        </member>
+        <member name="P:Api.Contracts.Companies.InviteDriverDto.ExpiresAt">
+            <example>2025-12-31T00:00:00Z</example>
+        </member>
+        <member name="P:Api.Contracts.Companies.PayMembershipDto.Plan">
+            <example>Basic</example>
+        </member>
+        <member name="P:Api.Contracts.Companies.PayMembershipDto.AmountCents">
+            <example>99000</example>
+        </member>
+        <member name="P:Api.Contracts.Companies.PayMembershipDto.IdempotencyKey">
+            <example>membership-2025-09</example>
+        </member>
+        <member name="P:Api.Contracts.Companies.PaySalaryDto.DriverUserId">
+            <example>68a000000000000000000005</example>
+        </member>
+        <member name="P:Api.Contracts.Companies.PaySalaryDto.AmountCents">
+            <example>150000</example>
+        </member>
+        <member name="P:Api.Contracts.Companies.PaySalaryDto.IdempotencyKey">
+            <example>salary-2025-08-30-01</example>
+        </member>
+        <member name="P:Api.Contracts.Companies.TopupDto.AmountCents">
+            <example>500000</example>
+        </member>
+        <member name="P:Api.Contracts.Companies.TopupDto.IdempotencyKey">
+            <example>topup-2025-08-30-01</example>
+        </member>
+        <member name="P:Api.Contracts.Companies.UpdateCompanyDto.Name">
+            <example>AutoPro Co</example>
+        </member>
+        <member name="P:Api.Contracts.Companies.UpdateCompanyDto.Description">
+            <example>Logistics and last-mile delivery</example>
+        </member>
+        <member name="P:Api.Contracts.Companies.UpdateCompanyDto.ImgUrl">
+            <example>https://cdn.example.com/logo.png</example>
+        </member>
+        <member name="P:Api.Contracts.Companies.UpdateCompanyDto.IsActive">
+            <example>true</example>
+        </member>
+        <member name="P:Api.Contracts.Drivers.ApplyCompanyDto.CompanyId">
+            <example>68a000000000000000000010</example>
+        </member>
+        <member name="P:Api.Contracts.Drivers.ApplyCompanyDto.ExpiresAt">
+            <example>2025-12-31T00:00:00Z</example>
+        </member>
+        <member name="P:Api.Contracts.Drivers.SetAvailabilityDto.IsAvailable">
+            <example>true</example>
+        </member>
+        <member name="P:Api.Contracts.Drivers.UpdateDriverDto.FullName">
+            <example>Nguyen Van A</example>
+        </member>
+        <member name="P:Api.Contracts.Drivers.UpdateDriverDto.Phone">
+            <example>+84 912 345 678</example>
+        </member>
+        <member name="P:Api.Contracts.Drivers.UpdateDriverDto.Bio">
+            <example>5-year experience, safe driving</example>
+        </member>
+        <member name="P:Api.Contracts.Drivers.UpdateDriverDto.Skills">
+            <example>bike,city,english</example>
+        </member>
+        <member name="P:Api.Contracts.Drivers.UpdateDriverDto.Location">
+            <example>Ho Chi Minh</example>
+        </member>
+        <member name="P:Api.Contracts.Drivers.UpdateDriverDto.ImgUrl">
+            <example>https://cdn.example.com/avatar.png</example>
+        </member>
+        <member name="P:Api.Contracts.Drivers.UpdateDriverDto.IsAvailable">
+            <example>true</example>
+        </member>
+        <member name="P:Api.Contracts.Drivers.WithdrawDto.AmountCents">
+            <example>100000</example>
+        </member>
+        <member name="P:Api.Contracts.Drivers.WithdrawDto.IdempotencyKey">
+            <example>withdraw-2025-08-30-01</example>
+        </member>
+        <member name="P:Api.Contracts.Riders.CreateOrderDto.CompanyId">
+            <example>68a000000000000000000020</example>
+        </member>
+        <member name="P:Api.Contracts.Riders.CreateOrderDto.ServiceId">
+            <example>68a0000000000000000000A0</example>
+        </member>
+        <member name="P:Api.Contracts.Riders.ReviewOrderDto.Rating">
+            <example>5</example>
+        </member>
+        <member name="P:Api.Contracts.Riders.ReviewOrderDto.Comment">
+            <example>Very satisfied!</example>
+        </member>
+        <member name="P:Api.Contracts.Riders.TopupDto.AmountCents">
+            <example>200000</example>
+        </member>
+        <member name="P:Api.Contracts.Riders.TopupDto.IdempotencyKey">
+            <example>rider-topup-2025-08-30-01</example>
+        </member>
+        <member name="P:Api.Contracts.Riders.UpdateRiderDto.FullName">
+            <example>Tran Thi B</example>
+        </member>
+        <member name="P:Api.Contracts.Riders.UpdateRiderDto.Phone">
+            <example>+84 987 654 321</example>
+        </member>
+        <member name="P:Api.Contracts.Riders.UpdateRiderDto.ImgUrl">
+            <example>https://cdn.example.com/avatar.png</example>
+        </member>
+        <member name="P:Api.Contracts.Riders.WithdrawDto.AmountCents">
+            <example>50000</example>
+        </member>
+        <member name="P:Api.Contracts.Riders.WithdrawDto.IdempotencyKey">
+            <example>rider-withdraw-2025-08-30-01</example>
+        </member>
+    </members>
+</doc>
