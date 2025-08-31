@@ -119,13 +119,13 @@
             <example>rider-topup-2025-08-30-01</example>
         </member>
         <member name="P:Api.Contracts.Riders.UpdateRiderDto.FullName">
-            <example>Tran Thi B</example>
+            <summary>Họ tên Rider</summary>
         </member>
         <member name="P:Api.Contracts.Riders.UpdateRiderDto.Phone">
-            <example>+84 987 654 321</example>
+            <summary>Số điện thoại</summary>
         </member>
         <member name="P:Api.Contracts.Riders.UpdateRiderDto.ImgUrl">
-            <example>https://cdn.example.com/avatar.png</example>
+            <summary>Ảnh đại diện URL</summary>
         </member>
         <member name="P:Api.Contracts.Riders.WithdrawDto.AmountCents">
             <example>50000</example>

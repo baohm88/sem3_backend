@@ -1,4 +1,3 @@
-
 using Api.Common;
 using Api.Contracts.Riders;
 using Domain.Entities;
@@ -36,23 +35,27 @@ public class RidersController : ControllerBase
         return uid == riderUserId ? r : null;
     }
 
+    private static string NewId() => Guid.NewGuid().ToString("N")[..24];
+
     // ========= Me =========
-    [Authorize(Roles = "Rider")]
     [HttpGet("me")]
-    [SwaggerOperation(Summary = "Get My Rider Profile")]
+    [SwaggerOperation(Summary = "Get My Rider Profile (auto-create if missing)")]
     [ProducesResponseType(typeof(ApiResponse<RiderProfile>), 200)]
     public async Task<ActionResult<ApiResponse<RiderProfile>>> GetMyProfile()
     {
         var uid = GetUserId();
         if (uid == null) return ApiResponse<RiderProfile>.Fail("UNAUTHORIZED", "Missing user id");
+
         var p = await _db.RiderProfiles.FirstOrDefaultAsync(x => x.UserId == uid);
         if (p == null)
         {
             p = new RiderProfile
             {
-                Id = Guid.NewGuid().ToString("N")[..24],
+                Id = NewId(),
                 UserId = uid,
-                FullName = "New Rider",
+                FullName = "",
+                Phone = null,
+                ImgUrl = null,
                 CreatedAt = DateTime.UtcNow,
                 UpdatedAt = DateTime.UtcNow
             };
@@ -62,21 +65,44 @@ public class RidersController : ControllerBase
         return ApiResponse<RiderProfile>.Ok(p);
     }
 
-    [Authorize(Roles = "Rider")]
     [HttpPut("me")]
-    [SwaggerOperation(Summary = "Update My Rider Profile")]
+    [Consumes("application/json")]
+    [SwaggerOperation(Summary = "Update My Rider Profile (upsert)")]
     [ProducesResponseType(typeof(ApiResponse<RiderProfile>), 200)]
     public async Task<ActionResult<ApiResponse<RiderProfile>>> UpdateMyProfile([FromBody] UpdateRiderDto dto)
     {
         var uid = GetUserId();
         if (uid == null) return ApiResponse<RiderProfile>.Fail("UNAUTHORIZED", "Missing user id");
-        var p = await _db.RiderProfiles.FirstOrDefaultAsync(x => x.UserId == uid);
-        if (p == null) return ApiResponse<RiderProfile>.Fail("NOT_FOUND", "Profile không tồn tại");
 
-        if (!string.IsNullOrWhiteSpace(dto.FullName)) p.FullName = dto.FullName!;
-        if (dto.Phone is not null) p.Phone = dto.Phone;
-        if (dto.ImgUrl is not null) p.ImgUrl = dto.ImgUrl;
-        p.UpdatedAt = DateTime.UtcNow;
+        var p = await _db.RiderProfiles.FirstOrDefaultAsync(x => x.UserId == uid);
+        if (p == null)
+        {
+            p = new RiderProfile
+            {
+                Id = NewId(),
+                UserId = uid,
+                FullName = dto.FullName ?? "",
+                Phone = dto.Phone,
+                ImgUrl = UrlHelper.TryNormalizeUrl(dto.ImgUrl),
+                CreatedAt = DateTime.UtcNow,
+                UpdatedAt = DateTime.UtcNow
+            };
+            _db.RiderProfiles.Add(p);
+        }
+        else
+        {
+            if (dto.FullName is not null) p.FullName = dto.FullName;
+            if (dto.Phone is not null) p.Phone = dto.Phone;
+            if (dto.ImgUrl is not null)
+            {
+                var normalized = UrlHelper.TryNormalizeUrl(dto.ImgUrl);
+                if (normalized == null)
+                    return ApiResponse<RiderProfile>.Fail("IMG_URL_INVALID", "Ảnh đại diện không phải URL hợp lệ (http/https).");
+                p.ImgUrl = normalized;
+            }
+
+            p.UpdatedAt = DateTime.UtcNow;
+        }
 
         await _db.SaveChangesAsync();
         return ApiResponse<RiderProfile>.Ok(p);
@@ -110,9 +136,13 @@ public class RidersController : ControllerBase
         var items = await q.Skip((page - 1) * size).Take(size).ToListAsync();
         return ApiResponse<PageResult<RiderProfile>>.Ok(new PageResult<RiderProfile>
         {
-            page = page, size = size, totalItems = total,
+            page = page,
+            size = size,
+            totalItems = total,
             totalPages = (int)Math.Ceiling(total / (double)size),
-            hasNext = page * size < total, hasPrev = page > 1, items = items
+            hasNext = page * size < total,
+            hasPrev = page > 1,
+            items = items
         });
     }
 
@@ -141,7 +171,7 @@ public class RidersController : ControllerBase
         {
             wallet = new Wallet
             {
-                Id = Guid.NewGuid().ToString("N")[..24],
+                Id = NewId(),
                 OwnerType = "Rider",
                 OwnerRefId = userId,
                 BalanceCents = 0,
@@ -169,7 +199,13 @@ public class RidersController : ControllerBase
         {
             return ApiResponse<PageResult<Transaction>>.Ok(new PageResult<Transaction>
             {
-                page = page, size = size, totalItems = 0, totalPages = 0, hasNext = false, hasPrev = false, items = Array.Empty<Transaction>()
+                page = page,
+                size = size,
+                totalItems = 0,
+                totalPages = 0,
+                hasNext = false,
+                hasPrev = false,
+                items = Array.Empty<Transaction>()
             });
         }
 
@@ -179,8 +215,13 @@ public class RidersController : ControllerBase
         var items = await q.Skip((page - 1) * size).Take(size).ToListAsync();
         return ApiResponse<PageResult<Transaction>>.Ok(new PageResult<Transaction>
         {
-            page = page, size = size, totalItems = total, totalPages = (int)Math.Ceiling(total / (double)size),
-            hasNext = page * size < total, hasPrev = page > 1, items = items
+            page = page,
+            size = size,
+            totalItems = total,
+            totalPages = (int)Math.Ceiling(total / (double)size),
+            hasNext = page * size < total,
+            hasPrev = page > 1,
+            items = items
         });
     }
 
@@ -199,7 +240,7 @@ public class RidersController : ControllerBase
         {
             wallet = new Wallet
             {
-                Id = Guid.NewGuid().ToString("N")[..24],
+                Id = NewId(),
                 OwnerType = "Rider",
                 OwnerRefId = userId,
                 BalanceCents = 0,
@@ -220,7 +261,7 @@ public class RidersController : ControllerBase
 
         var tx = new Transaction
         {
-            Id = Guid.NewGuid().ToString("N")[..24],
+            Id = NewId(),
             FromWalletId = null,
             ToWalletId = wallet.Id,
             AmountCents = dto.AmountCents,
@@ -259,7 +300,7 @@ public class RidersController : ControllerBase
 
         var tx = new Transaction
         {
-            Id = Guid.NewGuid().ToString("N")[..24],
+            Id = NewId(),
             FromWalletId = wallet.Id,
             ToWalletId = null,
             AmountCents = dto.AmountCents,
@@ -292,7 +333,7 @@ public class RidersController : ControllerBase
 
         var order = new Order
         {
-            Id = Guid.NewGuid().ToString("N")[..24],
+            Id = NewId(),
             RiderUserId = userId,
             CompanyId = dto.CompanyId!,
             ServiceId = dto.ServiceId!,
@@ -325,8 +366,13 @@ public class RidersController : ControllerBase
         var items = await q.Skip((page - 1) * size).Take(size).ToListAsync();
         return ApiResponse<PageResult<Order>>.Ok(new PageResult<Order>
         {
-            page = page, size = size, totalItems = total, totalPages = (int)Math.Ceiling(total / (double)size),
-            hasNext = page * size < total, hasPrev = page > 1, items = items
+            page = page,
+            size = size,
+            totalItems = total,
+            totalPages = (int)Math.Ceiling(total / (double)size),
+            hasNext = page * size < total,
+            hasPrev = page > 1,
+            items = items
         });
     }
 
@@ -369,7 +415,7 @@ public class RidersController : ControllerBase
 
         var rv = new Review
         {
-            Id = Guid.NewGuid().ToString("N")[..24],
+            Id = NewId(),
             OrderId = orderId,
             RiderUserId = userId,
             Rating = dto.Rating,
@@ -414,8 +460,13 @@ public class RidersController : ControllerBase
         var items = await q.Skip((page - 1) * size).Take(size).ToListAsync();
         return ApiResponse<PageResult<Review>>.Ok(new PageResult<Review>
         {
-            page = page, size = size, totalItems = total, totalPages = (int)Math.Ceiling(total / (double)size),
-            hasNext = page * size < total, hasPrev = page > 1, items = items
+            page = page,
+            size = size,
+            totalItems = total,
+            totalPages = (int)Math.Ceiling(total / (double)size),
+            hasNext = page * size < total,
+            hasPrev = page > 1,
+            items = items
         });
     }
 }

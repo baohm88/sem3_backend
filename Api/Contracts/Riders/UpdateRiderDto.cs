@@ -1,18 +1,13 @@
-
 using System.ComponentModel.DataAnnotations;
-
 namespace Api.Contracts.Riders;
 
 public class UpdateRiderDto
 {
-    /// <example>Tran Thi B</example>
-    [StringLength(200)]
+    /// <summary>Họ tên Rider</summary>
     public string? FullName { get; set; }
-
-    /// <example>+84 987 654 321</example>
+    /// <summary>Số điện thoại</summary>
     public string? Phone { get; set; }
-
-    /// <example>https://cdn.example.com/avatar.png</example>
+    /// <summary>Ảnh đại diện URL</summary>
     [Url]
     public string? ImgUrl { get; set; }
 }

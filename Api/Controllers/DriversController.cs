@@ -1,4 +1,3 @@
-
 using Api.Common;
 using Api.Contracts.Drivers;
 using Domain.Entities;
@@ -8,6 +7,10 @@ using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using Swashbuckle.AspNetCore.Annotations;
 using System.Security.Claims;
+using System;
+using System.Linq;
+using System.Text.Json;
+
 
 namespace Api.Controllers;
 
@@ -36,57 +39,110 @@ public class DriversController : ControllerBase
         return uid == driverUserId ? d : null;
     }
 
+    private static string NewId() => Guid.NewGuid().ToString("N")[..24];
+
+    private static string? NormalizeSkills(string? raw)
+    {
+        if (raw == null) return null;              // không gửi -> không đổi
+        var parts = raw
+            .Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+            .Where(s => !string.IsNullOrWhiteSpace(s))
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToArray();
+        // Cho phép gửi chuỗi rỗng -> set null (không ép [])
+        if (parts.Length == 0) return null;
+        return JsonSerializer.Serialize(parts);     // ví dụ: ["bike","city","english"]
+    }
+
     // ========= Me =========
     [Authorize(Roles = "Driver")]
     [HttpGet("me")]
-    [SwaggerOperation(Summary = "Get My Driver Profile")]
+    [SwaggerOperation(Summary = "Get My Driver Profile (auto-create if missing)")]
     [ProducesResponseType(typeof(ApiResponse<DriverProfile>), 200)]
-    public async Task<ActionResult<ApiResponse<DriverProfile>>> GetMyProfile()
+    public async Task<ActionResult<ApiResponse<DriverProfile>>> GetMyDriver()
     {
         var uid = GetUserId();
         if (uid == null) return ApiResponse<DriverProfile>.Fail("UNAUTHORIZED", "Missing user id");
+
         var p = await _db.DriverProfiles.FirstOrDefaultAsync(x => x.UserId == uid);
         if (p == null)
         {
             p = new DriverProfile
             {
-                Id = Guid.NewGuid().ToString("N")[..24],
+                Id = NewId(),
                 UserId = uid,
                 FullName = "New Driver",
+                Phone = null,
+                Bio = null,
                 Rating = 0,
+                Skills = null,
+                Location = null,
                 IsAvailable = true,
+                ImgUrl = null,
                 CreatedAt = DateTime.UtcNow,
                 UpdatedAt = DateTime.UtcNow
             };
             _db.DriverProfiles.Add(p);
             await _db.SaveChangesAsync();
         }
+
         return ApiResponse<DriverProfile>.Ok(p);
     }
 
     [Authorize(Roles = "Driver")]
     [HttpPut("me")]
-    [SwaggerOperation(Summary = "Update My Driver Profile")]
+    [Consumes("application/json")]
+    [SwaggerOperation(Summary = "Update My Driver Profile (upsert)")]
     [ProducesResponseType(typeof(ApiResponse<DriverProfile>), 200)]
-    public async Task<ActionResult<ApiResponse<DriverProfile>>> UpdateMyProfile([FromBody] UpdateDriverDto dto)
+    public async Task<ActionResult<ApiResponse<DriverProfile>>> UpdateMyDriver([FromBody] UpdateDriverDto dto)
     {
         var uid = GetUserId();
         if (uid == null) return ApiResponse<DriverProfile>.Fail("UNAUTHORIZED", "Missing user id");
-        var p = await _db.DriverProfiles.FirstOrDefaultAsync(x => x.UserId == uid);
-        if (p == null) return ApiResponse<DriverProfile>.Fail("NOT_FOUND", "Profile không tồn tại");
 
-        if (!string.IsNullOrWhiteSpace(dto.FullName)) p.FullName = dto.FullName!;
-        if (dto.Phone is not null) p.Phone = dto.Phone;
-        if (dto.Bio is not null) p.Bio = dto.Bio;
-        if (dto.Skills is not null) p.Skills = dto.Skills;
-        if (dto.Location is not null) p.Location = dto.Location;
-        if (dto.ImgUrl is not null) p.ImgUrl = dto.ImgUrl;
-        if (dto.IsAvailable.HasValue) p.IsAvailable = dto.IsAvailable.Value;
-        p.UpdatedAt = DateTime.UtcNow;
+        var p = await _db.DriverProfiles.FirstOrDefaultAsync(x => x.UserId == uid);
+        if (p == null)
+        {
+            p = new DriverProfile
+            {
+                Id = NewId(),
+                UserId = uid,
+                FullName = dto.FullName ?? "New Driver",
+                Phone = dto.Phone,
+                Bio = null,
+                Rating = 0,
+                Skills = NormalizeSkills(dto.Skills),
+                Location = dto.Location,
+                IsAvailable = true,
+                ImgUrl = UrlHelper.TryNormalizeUrl(dto.ImgUrl),
+                CreatedAt = DateTime.UtcNow,
+                UpdatedAt = DateTime.UtcNow
+            };
+            _db.DriverProfiles.Add(p);
+        }
+        else
+        {
+            if (dto.FullName is not null) p.FullName = dto.FullName;
+            if (dto.Phone is not null) p.Phone = dto.Phone;
+            if (dto.Skills is not null) p.Skills = NormalizeSkills(dto.Skills);
+
+            if (dto.Location is not null) p.Location = dto.Location;
+            if (dto.ImgUrl is not null)
+            {
+                var normalized = UrlHelper.TryNormalizeUrl(dto.ImgUrl);
+                if (normalized == null)
+                    return ApiResponse<DriverProfile>.Fail("IMG_URL_INVALID", "Ảnh đại diện không phải URL hợp lệ (http/https).");
+                p.ImgUrl = normalized;
+            }
+
+            if (dto.IsAvailable is not null) p.IsAvailable = dto.IsAvailable.Value;
+
+            p.UpdatedAt = DateTime.UtcNow;
+        }
 
         await _db.SaveChangesAsync();
         return ApiResponse<DriverProfile>.Ok(p);
     }
+
 
     // ========= Public listing & detail =========
     [HttpGet]
@@ -128,9 +184,13 @@ public class DriversController : ControllerBase
         var items = await q.Skip((page - 1) * size).Take(size).ToListAsync();
         return ApiResponse<PageResult<DriverProfile>>.Ok(new PageResult<DriverProfile>
         {
-            page = page, size = size, totalItems = total,
+            page = page,
+            size = size,
+            totalItems = total,
             totalPages = (int)Math.Ceiling(total / (double)size),
-            hasNext = page * size < total, hasPrev = page > 1, items = items
+            hasNext = page * size < total,
+            hasPrev = page > 1,
+            items = items
         });
     }
 
@@ -174,7 +234,7 @@ public class DriversController : ControllerBase
         {
             wallet = new Wallet
             {
-                Id = Guid.NewGuid().ToString("N")[..24],
+                Id = NewId(),
                 OwnerType = "Driver",
                 OwnerRefId = userId,
                 BalanceCents = 0,
@@ -202,7 +262,13 @@ public class DriversController : ControllerBase
         {
             return ApiResponse<PageResult<Transaction>>.Ok(new PageResult<Transaction>
             {
-                page = page, size = size, totalItems = 0, totalPages = 0, hasNext = false, hasPrev = false, items = Array.Empty<Transaction>()
+                page = page,
+                size = size,
+                totalItems = 0,
+                totalPages = 0,
+                hasNext = false,
+                hasPrev = false,
+                items = Array.Empty<Transaction>()
             });
         }
 
@@ -212,8 +278,13 @@ public class DriversController : ControllerBase
         var items = await q.Skip((page - 1) * size).Take(size).ToListAsync();
         return ApiResponse<PageResult<Transaction>>.Ok(new PageResult<Transaction>
         {
-            page = page, size = size, totalItems = total, totalPages = (int)Math.Ceiling(total / (double)size),
-            hasNext = page * size < total, hasPrev = page > 1, items = items
+            page = page,
+            size = size,
+            totalItems = total,
+            totalPages = (int)Math.Ceiling(total / (double)size),
+            hasNext = page * size < total,
+            hasPrev = page > 1,
+            items = items
         });
     }
 
@@ -242,7 +313,7 @@ public class DriversController : ControllerBase
 
         var tx = new Transaction
         {
-            Id = Guid.NewGuid().ToString("N")[..24],
+            Id = NewId(),
             FromWalletId = wallet.Id,
             ToWalletId = null,
             AmountCents = dto.AmountCents,
@@ -273,8 +344,13 @@ public class DriversController : ControllerBase
         var items = await q.Skip((page - 1) * size).Take(size).ToListAsync();
         return ApiResponse<PageResult<Company>>.Ok(new PageResult<Company>
         {
-            page = page, size = size, totalItems = total, totalPages = (int)Math.Ceiling(total / (double)size),
-            hasNext = page * size < total, hasPrev = page > 1, items = items
+            page = page,
+            size = size,
+            totalItems = total,
+            totalPages = (int)Math.Ceiling(total / (double)size),
+            hasNext = page * size < total,
+            hasPrev = page > 1,
+            items = items
         });
     }
 
@@ -294,7 +370,7 @@ public class DriversController : ControllerBase
 
         var app = new JobApplication
         {
-            Id = Guid.NewGuid().ToString("N")[..24],
+            Id = NewId(),
             CompanyId = dto.CompanyId!,
             DriverUserId = userId,
             Status = ApplyStatus.Applied,
@@ -325,8 +401,13 @@ public class DriversController : ControllerBase
         var items = await q.Skip((page - 1) * size).Take(size).ToListAsync();
         return ApiResponse<PageResult<JobApplication>>.Ok(new PageResult<JobApplication>
         {
-            page = page, size = size, totalItems = total, totalPages = (int)Math.Ceiling(total / (double)size),
-            hasNext = page * size < total, hasPrev = page > 1, items = items
+            page = page,
+            size = size,
+            totalItems = total,
+            totalPages = (int)Math.Ceiling(total / (double)size),
+            hasNext = page * size < total,
+            hasPrev = page > 1,
+            items = items
         });
     }
 
@@ -346,8 +427,13 @@ public class DriversController : ControllerBase
         var items = await q.Skip((page - 1) * size).Take(size).ToListAsync();
         return ApiResponse<PageResult<Invite>>.Ok(new PageResult<Invite>
         {
-            page = page, size = size, totalItems = total, totalPages = (int)Math.Ceiling(total / (double)size),
-            hasNext = page * size < total, hasPrev = page > 1, items = items
+            page = page,
+            size = size,
+            totalItems = total,
+            totalPages = (int)Math.Ceiling(total / (double)size),
+            hasNext = page * size < total,
+            hasPrev = page > 1,
+            items = items
         });
     }
 
@@ -371,7 +457,7 @@ public class DriversController : ControllerBase
         {
             _db.CompanyDriverRelations.Add(new CompanyDriverRelation
             {
-                Id = Guid.NewGuid().ToString("N")[..24],
+                Id = NewId(),
                 CompanyId = inv.CompanyId,
                 DriverUserId = userId,
                 BaseSalaryCents = inv.BaseSalaryCents,

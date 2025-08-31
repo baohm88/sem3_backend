@@ -1,4 +1,3 @@
-
 using Api.Common;
 using Api.Contracts.Companies;
 using Domain.Entities;
@@ -8,6 +7,9 @@ using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using Swashbuckle.AspNetCore.Annotations;
 using System.Security.Claims;
+using System;
+using System.Linq;
+
 
 namespace Api.Controllers;
 
@@ -43,75 +45,85 @@ public class CompaniesController : ControllerBase
         return await _db.Companies.FirstOrDefaultAsync(c => c.OwnerUserId == uid);
     }
 
-    // ========= Search Drivers =========
-    [HttpGet("drivers")]
-    [SwaggerOperation(Summary = "Search Drivers")]
-    [ProducesResponseType(typeof(ApiResponse<PageResult<DriverProfile>>), 200)]
-    public async Task<ActionResult<ApiResponse<PageResult<DriverProfile>>>> SearchDrivers(
-        [FromQuery] int page = 1, [FromQuery] int size = 10, [FromQuery] string? sort = null,
-        [FromQuery] decimal? rating = null, [FromQuery] string? skills = null, [FromQuery] string? location = null)
-    {
-        var query = _db.DriverProfiles.AsQueryable();
-        if (rating.HasValue) query = query.Where(d => d.Rating >= rating.Value);
-        if (!string.IsNullOrWhiteSpace(location)) query = query.Where(d => d.Location == location);
-        if (!string.IsNullOrWhiteSpace(skills))
-        {
-            var parts = skills.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
-            foreach (var p in parts) query = query.Where(d => d.Skills!.Contains(p));
-        }
-        if (!string.IsNullOrWhiteSpace(sort))
-        {
-            var s = sort.Split(':'); var field = s[0]; var dir = s.Length > 1 ? s[1] : "asc";
-            query = (field, dir) switch
-            {
-                ("rating", "desc") => query.OrderByDescending(d => d.Rating),
-                ("rating", "asc") => query.OrderBy(d => d.Rating),
-                _ => query.OrderBy(d => d.FullName)
-            };
-        }
-        var total = await query.CountAsync();
-        var items = await query.Skip((page - 1) * size).Take(size).ToListAsync();
-        return ApiResponse<PageResult<DriverProfile>>.Ok(new PageResult<DriverProfile>
-        {
-            page = page,
-            size = size,
-            totalItems = total,
-            totalPages = (int)Math.Ceiling(total / (double)size),
-            hasNext = page * size < total,
-            hasPrev = page > 1,
-            items = items
-        });
-    }
-
     // ========= Me =========
     [Authorize(Roles = "Company")]
     [HttpGet("me")]
-    [SwaggerOperation(Summary = "Get My Company Profile")]
+    [SwaggerOperation(Summary = "Get My Company Profile (auto-create if missing)")]
     [ProducesResponseType(typeof(ApiResponse<Company>), 200)]
     public async Task<ActionResult<ApiResponse<Company>>> GetMyCompany()
     {
-        var c = await GetCompanyOfCurrentUserAsync();
-        if (c == null) return ApiResponse<Company>.Fail("NOT_FOUND", "Company chưa được tạo cho user này");
-        return ApiResponse<Company>.Ok(c);
+        var uid = User.FindFirst(ClaimTypes.NameIdentifier)?.Value ?? User.FindFirst("sub")?.Value;
+        if (uid == null) return ApiResponse<Company>.Fail("UNAUTHORIZED", "Missing user id");
+
+        var p = await _db.Companies.FirstOrDefaultAsync(x => x.OwnerUserId == uid);
+        if (p == null)
+        {
+            p = new Company
+            {
+                Id = Guid.NewGuid().ToString("N")[..24],
+                OwnerUserId = uid,
+                Name = "",
+                Description = null,
+                Rating = 0,
+                Membership = "Free",
+                MembershipExpiresAt = null,
+                IsActive = true,
+                ImgUrl = null,
+                CreatedAt = DateTime.UtcNow,
+                UpdatedAt = DateTime.UtcNow
+            };
+            _db.Companies.Add(p);
+            await _db.SaveChangesAsync();
+        }
+
+        return ApiResponse<Company>.Ok(p);
     }
 
     [Authorize(Roles = "Company")]
     [HttpPut("me")]
-    [SwaggerOperation(Summary = "Update My Company Profile")]
+    [Consumes("application/json")]
+    [SwaggerOperation(Summary = "Update My Company Profile (upsert)")]
     [ProducesResponseType(typeof(ApiResponse<Company>), 200)]
     public async Task<ActionResult<ApiResponse<Company>>> UpdateMyCompany([FromBody] UpdateCompanyDto dto)
     {
-        var c = await GetCompanyOfCurrentUserAsync();
-        if (c == null) return ApiResponse<Company>.Fail("NOT_FOUND", "Company chưa được tạo cho user này");
+        var uid = User.FindFirst(ClaimTypes.NameIdentifier)?.Value ?? User.FindFirst("sub")?.Value;
+        if (uid == null) return ApiResponse<Company>.Fail("UNAUTHORIZED", "Missing user id");
 
-        if (!string.IsNullOrWhiteSpace(dto.Name)) c.Name = dto.Name!;
-        if (dto.Description is not null) c.Description = dto.Description;
-        if (dto.ImgUrl is not null) c.ImgUrl = dto.ImgUrl;
-        if (dto.IsActive.HasValue) c.IsActive = dto.IsActive.Value;
-        c.UpdatedAt = DateTime.UtcNow;
+        var p = await _db.Companies.FirstOrDefaultAsync(x => x.OwnerUserId == uid);
+        if (p == null)
+        {
+            p = new Company
+            {
+                Id = Guid.NewGuid().ToString("N")[..24],
+                OwnerUserId = uid,
+                Name = dto.Name ?? "",
+                Description = dto.Description,
+                Rating = 0,
+                Membership = "Free",
+                MembershipExpiresAt = null,
+                IsActive = true,
+                ImgUrl = UrlHelper.TryNormalizeUrl(dto.ImgUrl),
+                CreatedAt = DateTime.UtcNow,
+                UpdatedAt = DateTime.UtcNow
+            };
+            _db.Companies.Add(p);
+        }
+        else
+        {
+            if (dto.Name is not null) p.Name = dto.Name;
+            if (dto.Description is not null) p.Description = dto.Description;
+            if (dto.ImgUrl is not null)
+            {
+                var normalized = UrlHelper.TryNormalizeUrl(dto.ImgUrl);
+                if (normalized == null)
+                    return ApiResponse<Company>.Fail("IMG_URL_INVALID", "Ảnh đại diện không phải URL hợp lệ (http/https).");
+                p.ImgUrl = normalized;
+            }
+            p.UpdatedAt = DateTime.UtcNow;
+        }
 
         await _db.SaveChangesAsync();
-        return ApiResponse<Company>.Ok(c);
+        return ApiResponse<Company>.Ok(p);
     }
 
     // ========= Public list & detail =========

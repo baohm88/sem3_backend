@@ -1,4 +1,3 @@
-
 using System.ComponentModel.DataAnnotations;
 
 namespace Api.Contracts.Drivers;
@@ -6,7 +5,6 @@ namespace Api.Contracts.Drivers;
 public class UpdateDriverDto
 {
     /// <example>Nguyen Van A</example>
-    [StringLength(200)]
     public string? FullName { get; set; }
 
     /// <example>+84 912 345 678</example>

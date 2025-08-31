@@ -84,8 +84,8 @@ public class AuthController : ControllerBase
         if (user == null) return ApiResponse<object>.Fail("NOT_FOUND", "User not found");
 
         var token = IssueJwt(user);
-        // return ApiResponse<object>.Ok(new { token, profile = new { user.Id, user.Email, user.Role } });
-        return ApiResponse<object>.Ok(new { token, user });
+        return ApiResponse<object>.Ok(new { token, profile = new { user.Id, user.Email, user.Role } });
+        // return ApiResponse<object>.Ok(new { token, user });
     }
 
     [AllowAnonymous]

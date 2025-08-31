@@ -123,6 +123,7 @@
 /Users/baoha/Downloads/mvp-starter/backend/Api/obj/Debug/net9.0/Api.csproj.CoreCompileInputs.cache
 /Users/baoha/Downloads/mvp-starter/backend/Api/obj/Debug/net9.0/Api.MvcApplicationPartsAssemblyInfo.cs
 /Users/baoha/Downloads/mvp-starter/backend/Api/obj/Debug/net9.0/Api.MvcApplicationPartsAssemblyInfo.cache
+/Users/baoha/Downloads/mvp-starter/backend/Api/obj/Debug/net9.0/Api.sourcelink.json
 /Users/baoha/Downloads/mvp-starter/backend/Api/obj/Debug/net9.0/scopedcss/bundle/Api.styles.css
 /Users/baoha/Downloads/mvp-starter/backend/Api/obj/Debug/net9.0/compressed/cdidhjid37-ejkuv129mn.gz
 /Users/baoha/Downloads/mvp-starter/backend/Api/obj/Debug/net9.0/staticwebassets.build.json
