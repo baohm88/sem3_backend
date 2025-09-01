@@ -10,6 +10,7 @@ using System.Security.Claims;
 using System;
 using System.Linq;
 using System.Text.Json;
+using System.Linq.Expressions;
 
 
 
@@ -143,39 +144,105 @@ public class CompaniesController : ControllerBase
   }
 
   // ========= Public list & detail =========
+  //   [HttpGet]
+  //   [SwaggerOperation(Summary = "List Companies")]
+  //   [ProducesResponseType(typeof(ApiResponse<PageResult<Company>>), 200)]
+  //   public async Task<ActionResult<ApiResponse<PageResult<Company>>>> ListCompanies(
+  //       [FromQuery] string? name = null,
+  //       [FromQuery] string? membership = null,
+  //       [FromQuery] bool? isActive = true,
+  //       [FromQuery] decimal? minRating = null,
+  //       [FromQuery] decimal? maxRating = null,
+  //       [FromQuery] int page = 1, [FromQuery] int size = 10, [FromQuery] string? sort = "name:asc")
+  //   {
+  //     var q = _db.Companies.AsQueryable();
+  //     if (!string.IsNullOrWhiteSpace(name)) q = q.Where(c => c.Name.Contains(name));
+  //     if (!string.IsNullOrWhiteSpace(membership)) q = q.Where(c => c.Membership == membership);
+  //     if (isActive.HasValue) q = q.Where(c => c.IsActive == isActive.Value);
+  //     if (minRating.HasValue) q = q.Where(c => c.Rating >= minRating.Value);
+  //     if (maxRating.HasValue) q = q.Where(c => c.Rating <= maxRating.Value);
+
+  //     if (!string.IsNullOrWhiteSpace(sort))
+  // {
+  //   var s = sort.Split(':'); var field = s[0]; var dir = s.Length > 1 ? s[1] : "asc";
+  //   q = (field, dir) switch
+  //   {
+  //     ("name", "desc") => q.OrderByDescending(c => c.Name),
+  //     ("name", "asc")  => q.OrderBy(c => c.Name),
+  //     ("rating", "desc") => q.OrderByDescending(c => c.Rating),
+  //     ("rating", "asc")  => q.OrderBy(c => c.Rating),
+  //     ("membership", "desc") => q.OrderByDescending(c => c.Membership),
+  //     ("membership", "asc")  => q.OrderBy(c => c.Membership),
+
+  //     _ => q.OrderBy(c => c.Name)
+  //   };
+  // }
+
+  //     var total = await q.CountAsync();
+  //     var items = await q.Skip((page - 1) * size).Take(size).ToListAsync();
+  //     return ApiResponse<PageResult<Company>>.Ok(new PageResult<Company>
+  //     {
+  //       page = page,
+  //       size = size,
+  //       totalItems = total,
+  //       totalPages = (int)Math.Ceiling(total / (double)size),
+  //       hasNext = page * size < total,
+  //       hasPrev = page > 1,
+  //       items = items
+  //     });
+  //   }
+
   [HttpGet]
   [SwaggerOperation(Summary = "List Companies")]
   [ProducesResponseType(typeof(ApiResponse<PageResult<Company>>), 200)]
   public async Task<ActionResult<ApiResponse<PageResult<Company>>>> ListCompanies(
-      [FromQuery] string? name = null,
-      [FromQuery] string? membership = null,
-      [FromQuery] bool? isActive = true,
-      [FromQuery] decimal? minRating = null,
-      [FromQuery] decimal? maxRating = null,
-      [FromQuery] int page = 1, [FromQuery] int size = 10, [FromQuery] string? sort = "name:asc")
+    [FromQuery] string? name = null,
+    [FromQuery] string? membership = null,
+    [FromQuery] bool? isActive = true,
+    [FromQuery] decimal? minRating = null,
+    [FromQuery] decimal? maxRating = null,
+    [FromQuery] int page = 1, [FromQuery] int size = 10, [FromQuery] string? sort = "name:asc")
   {
     var q = _db.Companies.AsQueryable();
+
     if (!string.IsNullOrWhiteSpace(name)) q = q.Where(c => c.Name.Contains(name));
     if (!string.IsNullOrWhiteSpace(membership)) q = q.Where(c => c.Membership == membership);
     if (isActive.HasValue) q = q.Where(c => c.IsActive == isActive.Value);
     if (minRating.HasValue) q = q.Where(c => c.Rating >= minRating.Value);
     if (maxRating.HasValue) q = q.Where(c => c.Rating <= maxRating.Value);
 
-    if (!string.IsNullOrWhiteSpace(sort))
+    // map rank: Premium(3) > Basic(2) > Free/khác(1)
+    Expression<Func<Company, int>> membershipRank = c =>
+      c.Membership == "Premium" ? 3 :
+      c.Membership == "Basic" ? 2 : 1;
+
+    // parsing sort
+    var s = (sort ?? "name:asc").Split(':');
+    var field = s[0];
+    var dir = s.Length > 1 ? s[1] : "asc";
+
+    // Luật:
+    // - Nếu sort theo name/rating: luôn ưu tiên membershipRank DESC trước, sau đó mới theo field + dir.
+    // - Nếu sort theo membership: tôn trọng dir (asc => Free…Premium, desc => Premium…Free)
+    q = (field, dir) switch
     {
-      var s = sort.Split(':'); var field = s[0]; var dir = s.Length > 1 ? s[1] : "asc";
-      q = (field, dir) switch
-      {
-        ("name", "desc") => q.OrderByDescending(c => c.Name),
-        ("name", "asc") => q.OrderBy(c => c.Name),
-        ("rating", "desc") => q.OrderByDescending(c => c.Rating),
-        ("rating", "asc") => q.OrderBy(c => c.Rating),
-        _ => q.OrderBy(c => c.Name)
-      };
-    }
+      ("name", "desc") => q.OrderByDescending(membershipRank).ThenByDescending(c => c.Name),
+      ("name", _) => q.OrderByDescending(membershipRank).ThenBy(c => c.Name),
+
+      ("rating", "desc") => q.OrderByDescending(membershipRank).ThenByDescending(c => c.Rating),
+      ("rating", _) => q.OrderByDescending(membershipRank).ThenBy(c => c.Rating),
+
+      // sort membership thuần theo dir
+      ("membership", "desc") => q.OrderByDescending(membershipRank),
+      ("membership", _) => q.OrderBy(membershipRank),
+
+      // mặc định: name asc với ưu tiên membership
+      _ => q.OrderByDescending(membershipRank).ThenBy(c => c.Name)
+    };
 
     var total = await q.CountAsync();
     var items = await q.Skip((page - 1) * size).Take(size).ToListAsync();
+
     return ApiResponse<PageResult<Company>>.Ok(new PageResult<Company>
     {
       page = page,
@@ -328,6 +395,55 @@ public class CompaniesController : ControllerBase
     });
   }
 
+  [AllowAnonymous] // hoặc [Authorize] nếu bạn muốn yêu cầu đăng nhập
+  [HttpGet("{companyId}/services/public")]
+  [SwaggerOperation(Summary = "Public: List Active Services of a Company")]
+  [ProducesResponseType(typeof(ApiResponse<PageResult<Service>>), 200)]
+  public async Task<ActionResult<ApiResponse<PageResult<Service>>>> ListServicesPublic(
+    [FromRoute] string companyId,
+    [FromQuery] bool? isActive = true, // default: chỉ lấy active
+    [FromQuery] string? q = null,
+    [FromQuery] int page = 1,
+    [FromQuery] int size = 10,
+    [FromQuery] string? sort = "updatedAt:desc")
+  {
+    var query = _db.Services.Where(s => s.CompanyId == companyId);
+
+    if (isActive.HasValue) query = query.Where(s => s.IsActive == isActive.Value);
+    if (!string.IsNullOrWhiteSpace(q))
+      query = query.Where(s => s.Title.Contains(q) || (s.Description != null && s.Description.Contains(q)));
+
+    if (!string.IsNullOrWhiteSpace(sort))
+    {
+      var s = sort.Split(':'); var field = s[0]; var dir = s.Length > 1 ? s[1] : "desc";
+      query = (field, dir) switch
+      {
+        ("price", "asc") => query.OrderBy(sv => sv.PriceCents),
+        ("price", "desc") => query.OrderByDescending(sv => sv.PriceCents),
+        ("title", "asc") => query.OrderBy(sv => sv.Title),
+        ("title", "desc") => query.OrderByDescending(sv => sv.Title),
+        ("createdAt", "asc") => query.OrderBy(sv => sv.CreatedAt),
+        ("createdAt", "desc") => query.OrderByDescending(sv => sv.CreatedAt),
+        ("updatedAt", "asc") => query.OrderBy(sv => sv.UpdatedAt),
+        _ => query.OrderByDescending(sv => sv.UpdatedAt)
+      };
+    }
+
+    var total = await query.CountAsync();
+    var items = await query.Skip((page - 1) * size).Take(size).ToListAsync();
+
+    return ApiResponse<PageResult<Service>>.Ok(new PageResult<Service>
+    {
+      page = page,
+      size = size,
+      totalItems = total,
+      totalPages = (int)Math.Ceiling(total / (double)size),
+      hasNext = page * size < total,
+      hasPrev = page > 1,
+      items = items
+    });
+  }
+
   // (OPTIONAL) GET DETAIL
   [Authorize(Roles = "Company")]
   [HttpGet("{companyId}/services/{serviceId}")]
@@ -439,45 +555,65 @@ public class CompaniesController : ControllerBase
     return ApiResponse<Wallet>.Ok(wallet);
   }
 
-  // ========= Transactions =========
+
   [Authorize(Roles = "Company")]
-  [HttpGet("{id}/transactions")]
-  [SwaggerOperation(Summary = "List Company Transactions")]
-  [ProducesResponseType(typeof(ApiResponse<PageResult<Transaction>>), 200)]
-  public async Task<ActionResult<ApiResponse<PageResult<Transaction>>>> GetTransactions(
-      [FromRoute] string id, [FromQuery] int page = 1, [FromQuery] int size = 10)
+  [HttpPost("{id}/wallet/withdraw")]
+  [SwaggerOperation(Summary = "Withdraw from Company Wallet")]
+  [ProducesResponseType(typeof(ApiResponse<object>), 200)]
+  public async Task<ActionResult<ApiResponse<object>>> Withdraw(
+    [FromRoute] string id,
+    [FromBody] WithdrawDto dto)
   {
     var company = await GetOwnedCompanyAsync(id);
-    if (company == null) return Forbidden<PageResult<Transaction>>();
+    if (company == null) return Forbidden<object>();
 
-    var wallet = await _db.Wallets.FirstOrDefaultAsync(w => w.OwnerType == "Company" && w.OwnerRefId == id);
+    if (dto.AmountCents <= 0)
+      return ApiResponse<object>.Fail("VALIDATION", "AmountCents phải > 0");
+
+    var wallet = await _db.Wallets.FirstOrDefaultAsync(
+        w => w.OwnerType == "Company" && w.OwnerRefId == id);
     if (wallet == null)
+      return ApiResponse<object>.Fail("NO_WALLET", "Company chưa có ví");
+
+    if (wallet.BalanceCents < dto.AmountCents)
+      return ApiResponse<object>.Fail("INSUFFICIENT_FUNDS", "Số dư không đủ");
+
+    // Idempotency
+    if (!string.IsNullOrWhiteSpace(dto.IdempotencyKey))
     {
-      return ApiResponse<PageResult<Transaction>>.Ok(new PageResult<Transaction>
-      {
-        page = page,
-        size = size,
-        totalItems = 0,
-        totalPages = 0,
-        hasNext = false,
-        hasPrev = false,
-        items = Array.Empty<Transaction>()
-      });
+      var exists = await _db.Transactions.AnyAsync(t => t.IdempotencyKey == dto.IdempotencyKey);
+      if (exists) return ApiResponse<object>.Ok(new { balance = wallet.BalanceCents });
     }
 
-    var q = _db.Transactions.Where(t => t.FromWalletId == wallet.Id || t.ToWalletId == wallet.Id)
-                            .OrderByDescending(t => t.CreatedAt);
-    var total = await q.CountAsync();
-    var items = await q.Skip((page - 1) * size).Take(size).ToListAsync();
-    return ApiResponse<PageResult<Transaction>>.Ok(new PageResult<Transaction>
+    // Trừ tiền
+    wallet.BalanceCents -= dto.AmountCents;
+    wallet.UpdatedAt = DateTime.UtcNow;
+
+    var tx = new Transaction
     {
-      page = page,
-      size = size,
-      totalItems = total,
-      totalPages = (int)Math.Ceiling(total / (double)size),
-      hasNext = page * size < total,
-      hasPrev = page > 1,
-      items = items
+      Id = Guid.NewGuid().ToString("N")[..24],
+      FromWalletId = wallet.Id,
+      ToWalletId = null,
+      AmountCents = dto.AmountCents,
+      Status = TxStatus.Completed,
+      IdempotencyKey = dto.IdempotencyKey,
+      CreatedAt = DateTime.UtcNow,
+      Type = TxType.Withdraw,
+      RefId = company.Id,
+      MetaJson = JsonSerializer.Serialize(new
+      {
+        companyId = company.Id,
+        method = "manual",
+      })
+    };
+
+    _db.Transactions.Add(tx);
+    await _db.SaveChangesAsync();
+
+    return ApiResponse<object>.Ok(new
+    {
+      transactionId = tx.Id,
+      balance = wallet.BalanceCents
     });
   }
 
@@ -534,6 +670,50 @@ public class CompaniesController : ControllerBase
     await _db.SaveChangesAsync();
     return ApiResponse<object>.Ok(new { wallet.Id, balance = wallet.BalanceCents });
   }
+
+  // ========= Transactions =========
+  [Authorize(Roles = "Company")]
+  [HttpGet("{id}/transactions")]
+  [SwaggerOperation(Summary = "List Company Transactions")]
+  [ProducesResponseType(typeof(ApiResponse<PageResult<Transaction>>), 200)]
+  public async Task<ActionResult<ApiResponse<PageResult<Transaction>>>> GetTransactions(
+      [FromRoute] string id, [FromQuery] int page = 1, [FromQuery] int size = 10)
+  {
+    var company = await GetOwnedCompanyAsync(id);
+    if (company == null) return Forbidden<PageResult<Transaction>>();
+
+    var wallet = await _db.Wallets.FirstOrDefaultAsync(w => w.OwnerType == "Company" && w.OwnerRefId == id);
+    if (wallet == null)
+    {
+      return ApiResponse<PageResult<Transaction>>.Ok(new PageResult<Transaction>
+      {
+        page = page,
+        size = size,
+        totalItems = 0,
+        totalPages = 0,
+        hasNext = false,
+        hasPrev = false,
+        items = Array.Empty<Transaction>()
+      });
+    }
+
+    var q = _db.Transactions.Where(t => t.FromWalletId == wallet.Id || t.ToWalletId == wallet.Id)
+                            .OrderByDescending(t => t.CreatedAt);
+    var total = await q.CountAsync();
+    var items = await q.Skip((page - 1) * size).Take(size).ToListAsync();
+    return ApiResponse<PageResult<Transaction>>.Ok(new PageResult<Transaction>
+    {
+      page = page,
+      size = size,
+      totalItems = total,
+      totalPages = (int)Math.Ceiling(total / (double)size),
+      hasNext = page * size < total,
+      hasPrev = page > 1,
+      items = items
+    });
+  }
+
+
 
   // ========= Pay Salary =========
   [Authorize(Roles = "Company")]

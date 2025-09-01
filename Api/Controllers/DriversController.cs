@@ -273,6 +273,153 @@ public class DriversController : ControllerBase
     return ApiResponse<Wallet>.Ok(wallet);
   }
 
+
+  [Authorize(Roles = "Driver")]
+  [HttpPost("{userId}/wallet/topup")]
+  [SwaggerOperation(Summary = "Topup Driver Wallet")]
+  [ProducesResponseType(typeof(ApiResponse<object>), 200)]
+  public async Task<ActionResult<ApiResponse<object>>> TopupDriverWallet(
+    [FromRoute] string userId,
+    [FromBody] Api.Contracts.Drivers.TopupDto dto)
+  {
+    // Chỉ cho phép owner tự nạp ví của mình
+    var uid = User.FindFirstValue(ClaimTypes.NameIdentifier) ?? User.FindFirstValue("sub");
+    if (uid == null || uid != userId)
+      return ApiResponse<object>.Fail("FORBIDDEN", "Bạn không có quyền nạp ví cho user này");
+
+    if (dto.AmountCents <= 0)
+      return ApiResponse<object>.Fail("VALIDATION", "AmountCents phải > 0");
+
+    // Lấy (hoặc tạo) ví Driver
+    var wallet = await _db.Wallets.FirstOrDefaultAsync(
+        w => w.OwnerType == "Driver" && w.OwnerRefId == userId);
+    if (wallet == null)
+    {
+      wallet = new Wallet
+      {
+        Id = Guid.NewGuid().ToString("N")[..24],
+        OwnerType = "Driver",
+        OwnerRefId = userId,
+        BalanceCents = 0,
+        LowBalanceThreshold = 10000,
+        UpdatedAt = DateTime.UtcNow
+      };
+      _db.Wallets.Add(wallet);
+    }
+
+    // Idempotency
+    if (!string.IsNullOrWhiteSpace(dto.IdempotencyKey))
+    {
+      var exists = await _db.Transactions.AnyAsync(t => t.IdempotencyKey == dto.IdempotencyKey);
+      if (exists) return ApiResponse<object>.Ok(new { wallet.Id, balance = wallet.BalanceCents });
+    }
+
+    // Cộng tiền
+    wallet.BalanceCents += dto.AmountCents;
+    wallet.UpdatedAt = DateTime.UtcNow;
+
+    // Ghi transaction
+    var tx = new Transaction
+    {
+      Id = Guid.NewGuid().ToString("N")[..24],
+      FromWalletId = null,                 // topup: tiền vào hệ thống từ bên ngoài
+      ToWalletId = wallet.Id,
+      AmountCents = dto.AmountCents,
+      Status = TxStatus.Completed,
+      IdempotencyKey = dto.IdempotencyKey,
+      CreatedAt = DateTime.UtcNow,
+      Type = TxType.Topup,                 // đã có trong enum
+      RefId = userId,
+      MetaJson = JsonSerializer.Serialize(new { driverUserId = userId, source = "manual" })
+    };
+    _db.Transactions.Add(tx);
+
+    await _db.SaveChangesAsync();
+
+    return ApiResponse<object>.Ok(new { wallet.Id, balance = wallet.BalanceCents, transactionId = tx.Id });
+  }
+
+  // [Authorize(Roles = "Driver")]
+  // [HttpPost("{userId}/wallet/withdraw")]
+  // [SwaggerOperation(Summary = "Withdraw from Driver Wallet")]
+  // [ProducesResponseType(typeof(ApiResponse<object>), 200)]
+  // public async Task<ActionResult<ApiResponse<object>>> Withdraw([FromRoute] string userId, [FromBody] WithdrawDto dto)
+  // {
+  //   var p = await GetOwnedDriverAsync(userId);
+  //   if (p == null) return Forbidden<object>();
+  //   if (dto.AmountCents <= 0) return ApiResponse<object>.Fail("VALIDATION", "AmountCents phải > 0");
+
+  //   var wallet = await _db.Wallets.FirstOrDefaultAsync(w => w.OwnerType == "Driver" && w.OwnerRefId == userId);
+  //   if (wallet == null || wallet.BalanceCents < dto.AmountCents)
+  //     return ApiResponse<object>.Fail("INSUFFICIENT_FUNDS", "Số dư không đủ");
+
+  //   if (!string.IsNullOrWhiteSpace(dto.IdempotencyKey))
+  //   {
+  //     var exists = await _db.Transactions.AnyAsync(t => t.IdempotencyKey == dto.IdempotencyKey);
+  //     if (exists) return ApiResponse<object>.Ok(new { balance = wallet.BalanceCents });
+  //   }
+
+  //   wallet.BalanceCents -= dto.AmountCents;
+  //   wallet.UpdatedAt = DateTime.UtcNow;
+
+  //   var tx = new Transaction
+  //   {
+  //     Id = NewId(),
+  //     FromWalletId = wallet.Id,
+  //     ToWalletId = null,
+  //     AmountCents = dto.AmountCents,
+  //     Status = TxStatus.Completed,
+  //     IdempotencyKey = dto.IdempotencyKey,
+  //     CreatedAt = DateTime.UtcNow
+  //   };
+  //   _db.Transactions.Add(tx);
+  //   await _db.SaveChangesAsync();
+
+  //   return ApiResponse<object>.Ok(new { wallet.Id, balance = wallet.BalanceCents });
+  // }
+  [Authorize(Roles = "Driver")]
+  [HttpPost("{userId}/wallet/withdraw")]
+  public async Task<ActionResult<ApiResponse<object>>> Withdraw([FromRoute] string userId, [FromBody] WithdrawDto dto)
+  {
+    var p = await GetOwnedDriverAsync(userId);
+    if (p == null) return Forbidden<object>();
+    if (dto.AmountCents <= 0) return ApiResponse<object>.Fail("VALIDATION", "AmountCents phải > 0");
+
+    var wallet = await _db.Wallets.FirstOrDefaultAsync(w => w.OwnerType == "Driver" && w.OwnerRefId == userId);
+    if (wallet == null) return ApiResponse<object>.Fail("NO_WALLET", "Driver chưa có ví");              // (tùy chọn: thông điệp rõ ràng)
+    if (wallet.BalanceCents < dto.AmountCents) return ApiResponse<object>.Fail("INSUFFICIENT_FUNDS", "Số dư không đủ");
+
+    if (!string.IsNullOrWhiteSpace(dto.IdempotencyKey))
+    {
+      var exists = await _db.Transactions.AnyAsync(t => t.IdempotencyKey == dto.IdempotencyKey);
+      if (exists) return ApiResponse<object>.Ok(new { balance = wallet.BalanceCents });
+    }
+
+    wallet.BalanceCents -= dto.AmountCents;
+    wallet.UpdatedAt = DateTime.UtcNow;
+
+    var tx = new Transaction
+    {
+      Id = NewId(),
+      FromWalletId = wallet.Id,
+      ToWalletId = null,
+      AmountCents = dto.AmountCents,
+      Status = TxStatus.Completed,
+      IdempotencyKey = dto.IdempotencyKey,
+      CreatedAt = DateTime.UtcNow,
+      Type = TxType.Withdraw,                                      // <-- QUAN TRỌNG
+      RefId = userId,                                              // (khuyến nghị)
+      MetaJson = JsonSerializer.Serialize(new { driverUserId = userId, method = "manual" }) // (khuyến nghị)
+    };
+
+    _db.Transactions.Add(tx);
+    await _db.SaveChangesAsync();
+
+    return ApiResponse<object>.Ok(new { wallet.Id, balance = wallet.BalanceCents, transactionId = tx.Id }); // (khuyến nghị)
+  }
+
+
+
   [Authorize(Roles = "Driver")]
   [HttpGet("{userId}/transactions")]
   [SwaggerOperation(Summary = "List Driver Transactions")]
@@ -314,44 +461,7 @@ public class DriversController : ControllerBase
     });
   }
 
-  [Authorize(Roles = "Driver")]
-  [HttpPost("{userId}/wallet/withdraw")]
-  [SwaggerOperation(Summary = "Withdraw from Driver Wallet")]
-  [ProducesResponseType(typeof(ApiResponse<object>), 200)]
-  public async Task<ActionResult<ApiResponse<object>>> Withdraw([FromRoute] string userId, [FromBody] WithdrawDto dto)
-  {
-    var p = await GetOwnedDriverAsync(userId);
-    if (p == null) return Forbidden<object>();
-    if (dto.AmountCents <= 0) return ApiResponse<object>.Fail("VALIDATION", "AmountCents phải > 0");
 
-    var wallet = await _db.Wallets.FirstOrDefaultAsync(w => w.OwnerType == "Driver" && w.OwnerRefId == userId);
-    if (wallet == null || wallet.BalanceCents < dto.AmountCents)
-      return ApiResponse<object>.Fail("INSUFFICIENT_FUNDS", "Số dư không đủ");
-
-    if (!string.IsNullOrWhiteSpace(dto.IdempotencyKey))
-    {
-      var exists = await _db.Transactions.AnyAsync(t => t.IdempotencyKey == dto.IdempotencyKey);
-      if (exists) return ApiResponse<object>.Ok(new { balance = wallet.BalanceCents });
-    }
-
-    wallet.BalanceCents -= dto.AmountCents;
-    wallet.UpdatedAt = DateTime.UtcNow;
-
-    var tx = new Transaction
-    {
-      Id = NewId(),
-      FromWalletId = wallet.Id,
-      ToWalletId = null,
-      AmountCents = dto.AmountCents,
-      Status = TxStatus.Completed,
-      IdempotencyKey = dto.IdempotencyKey,
-      CreatedAt = DateTime.UtcNow
-    };
-    _db.Transactions.Add(tx);
-    await _db.SaveChangesAsync();
-
-    return ApiResponse<object>.Ok(new { wallet.Id, balance = wallet.BalanceCents });
-  }
 
   // ========= Relationships / Companies =========
   [HttpGet("{userId}/companies")]
@@ -436,6 +546,32 @@ public class DriversController : ControllerBase
       items = items
     });
   }
+
+  [Authorize(Roles = "Driver")]
+  [HttpPost("{userId}/applications/{applicationId}/cancel")]
+  [SwaggerOperation(Summary = "Cancel/Recall Job Application")]
+  [ProducesResponseType(typeof(ApiResponse<object>), 200)]
+  public async Task<ActionResult<ApiResponse<object>>> CancelApplication(
+    [FromRoute] string userId,
+    [FromRoute] string applicationId)
+  {
+    var p = await GetOwnedDriverAsync(userId);
+    if (p == null) return Forbidden<object>();
+
+    var app = await _db.JobApplications.FirstOrDefaultAsync(a =>
+        a.Id == applicationId && a.DriverUserId == userId);
+
+    if (app == null) return ApiResponse<object>.Fail("NOT_FOUND", "Application không tồn tại");
+    if (app.Status != ApplyStatus.Applied)
+      return ApiResponse<object>.Fail("INVALID_STATE", "Không thể huỷ application này");
+
+    app.Status = ApplyStatus.Cancelled;
+    await _db.SaveChangesAsync();
+
+    return ApiResponse<object>.Ok(new { applicationId = app.Id, status = app.Status });
+  }
+
+
 
   // ========= Invitations =========
   [Authorize(Roles = "Driver")]

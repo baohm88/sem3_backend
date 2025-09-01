@@ -64,6 +64,12 @@
         <member name="P:Api.Contracts.Companies.UpdateCompanyDto.IsActive">
             <example>true</example>
         </member>
+        <member name="P:Api.Contracts.Companies.WithdrawDto.AmountCents">
+            <example>50000</example>
+        </member>
+        <member name="P:Api.Contracts.Companies.WithdrawDto.IdempotencyKey">
+            <summary>Idempotency key để chống gửi trùng</summary>
+        </member>
         <member name="P:Api.Contracts.Drivers.ApplyCompanyDto.CompanyId">
             <example>68a000000000000000000010</example>
         </member>
@@ -72,6 +78,12 @@
         </member>
         <member name="P:Api.Contracts.Drivers.SetAvailabilityDto.IsAvailable">
             <example>true</example>
+        </member>
+        <member name="P:Api.Contracts.Drivers.TopupDto.AmountCents">
+            <example>50000</example>
+        </member>
+        <member name="P:Api.Contracts.Drivers.TopupDto.IdempotencyKey">
+            <summary>Idempotency key để chống gửi trùng</summary>
         </member>
         <member name="P:Api.Contracts.Drivers.UpdateDriverDto.FullName">
             <example>Nguyen Van A</example>

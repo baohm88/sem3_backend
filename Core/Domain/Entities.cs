@@ -1,7 +1,7 @@
 namespace Domain.Entities;
 
 public enum UserRole { Admin, Company, Driver, Rider }
-public enum ApplyStatus { Applied, Accepted, Rejected, Expired }
+public enum ApplyStatus { Applied, Accepted, Rejected, Expired, Cancelled }
 public enum OrderStatus { Pending, InProgress, Completed, Cancelled }
 public enum TxStatus { Pending, Completed, Failed }
 public enum TxType : byte
@@ -10,7 +10,8 @@ public enum TxType : byte
   PaySalary = 1,
   PayMembership = 2,
   OrderPayment = 3,
-  Refund = 4
+  Refund = 4,
+  Withdraw = 5
 }
 
 public class User
