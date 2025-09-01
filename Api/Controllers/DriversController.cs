@@ -548,20 +548,22 @@ public class DriversController : ControllerBase
   }
 
   [Authorize(Roles = "Driver")]
-  [HttpPost("{userId}/applications/{applicationId}/cancel")]
+  [HttpDelete("{userId}/applications/{applicationId}")]
   [SwaggerOperation(Summary = "Cancel/Recall Job Application")]
   [ProducesResponseType(typeof(ApiResponse<object>), 200)]
   public async Task<ActionResult<ApiResponse<object>>> CancelApplication(
-    [FromRoute] string userId,
-    [FromRoute] string applicationId)
+  [FromRoute] string userId,
+  [FromRoute] string applicationId)
   {
     var p = await GetOwnedDriverAsync(userId);
     if (p == null) return Forbidden<object>();
 
-    var app = await _db.JobApplications.FirstOrDefaultAsync(a =>
-        a.Id == applicationId && a.DriverUserId == userId);
+    var app = await _db.JobApplications
+        .FirstOrDefaultAsync(a => a.Id == applicationId && a.DriverUserId == userId);
 
-    if (app == null) return ApiResponse<object>.Fail("NOT_FOUND", "Application không tồn tại");
+    if (app == null)
+      return ApiResponse<object>.Fail("NOT_FOUND", "Application không tồn tại");
+
     if (app.Status != ApplyStatus.Applied)
       return ApiResponse<object>.Fail("INVALID_STATE", "Không thể huỷ application này");
 
