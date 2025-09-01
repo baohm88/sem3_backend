@@ -133,5 +133,17 @@
         <member name="P:Api.Contracts.Riders.WithdrawDto.IdempotencyKey">
             <example>rider-withdraw-2025-08-30-01</example>
         </member>
+        <member name="P:UpdateServiceDto.Title">
+            <example>Premium Airport Pickup</example>
+        </member>
+        <member name="P:UpdateServiceDto.Description">
+            <example>Comfort sedan with experienced driver</example>
+        </member>
+        <member name="P:UpdateServiceDto.PriceCents">
+            <example>199000</example>
+        </member>
+        <member name="P:UpdateServiceDto.IsActive">
+            <example>true</example>
+        </member>
     </members>
 </doc>

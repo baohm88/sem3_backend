@@ -10,6 +10,7 @@ using System.Security.Claims;
 using System;
 using System.Linq;
 using System.Text.Json;
+using System.Text.Json.Serialization;
 
 
 namespace Api.Controllers;
@@ -19,472 +20,497 @@ namespace Api.Controllers;
 [SwaggerTag("Drivers")]
 public class DriversController : ControllerBase
 {
-    private readonly AppDbContext _db;
-    public DriversController(AppDbContext db) => _db = db;
+  private readonly AppDbContext _db;
+  public DriversController(AppDbContext db) => _db = db;
 
-    // ===== Helpers =====
-    private string? GetUserId() =>
-        User.FindFirstValue(ClaimTypes.NameIdentifier) ??
-        User.FindFirstValue(ClaimTypes.Name) ??
-        User.FindFirstValue("sub");
+  // ===== Helpers =====
+  private string? GetUserId() =>
+      User.FindFirstValue(ClaimTypes.NameIdentifier) ??
+      User.FindFirstValue(ClaimTypes.Name) ??
+      User.FindFirstValue("sub");
 
-    private ActionResult<ApiResponse<T>> Forbidden<T>() =>
-        ApiResponse<T>.Fail("FORBIDDEN", "Bạn không có quyền trên tài nguyên này");
+  private ActionResult<ApiResponse<T>> Forbidden<T>() =>
+      ApiResponse<T>.Fail("FORBIDDEN", "Bạn không có quyền trên tài nguyên này");
 
-    private async Task<DriverProfile?> GetOwnedDriverAsync(string driverUserId)
+  private async Task<DriverProfile?> GetOwnedDriverAsync(string driverUserId)
+  {
+    var uid = GetUserId();
+    var d = await _db.DriverProfiles.FirstOrDefaultAsync(x => x.UserId == driverUserId);
+    if (d == null) return null;
+    return uid == driverUserId ? d : null;
+  }
+
+  private static string NewId() => Guid.NewGuid().ToString("N")[..24];
+
+  private static string? NormalizeSkills(string? input)
+  {
+    if (string.IsNullOrWhiteSpace(input)) return null;
+    var s = input.Trim();
+
+    // 1) Nếu đã là JSON array hợp lệ -> parse & re-serialize chuẩn
+    if (s.StartsWith("["))
     {
-        var uid = GetUserId();
-        var d = await _db.DriverProfiles.FirstOrDefaultAsync(x => x.UserId == driverUserId);
-        if (d == null) return null;
-        return uid == driverUserId ? d : null;
-    }
-
-    private static string NewId() => Guid.NewGuid().ToString("N")[..24];
-
-    private static string? NormalizeSkills(string? raw)
-    {
-        if (raw == null) return null;              // không gửi -> không đổi
-        var parts = raw
-            .Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
-            .Where(s => !string.IsNullOrWhiteSpace(s))
-            .Distinct(StringComparer.OrdinalIgnoreCase)
-            .ToArray();
-        // Cho phép gửi chuỗi rỗng -> set null (không ép [])
-        if (parts.Length == 0) return null;
-        return JsonSerializer.Serialize(parts);     // ví dụ: ["bike","city","english"]
-    }
-
-    // ========= Me =========
-    [Authorize(Roles = "Driver")]
-    [HttpGet("me")]
-    [SwaggerOperation(Summary = "Get My Driver Profile (auto-create if missing)")]
-    [ProducesResponseType(typeof(ApiResponse<DriverProfile>), 200)]
-    public async Task<ActionResult<ApiResponse<DriverProfile>>> GetMyDriver()
-    {
-        var uid = GetUserId();
-        if (uid == null) return ApiResponse<DriverProfile>.Fail("UNAUTHORIZED", "Missing user id");
-
-        var p = await _db.DriverProfiles.FirstOrDefaultAsync(x => x.UserId == uid);
-        if (p == null)
+      try
+      {
+        var arr = JsonSerializer.Deserialize<List<string>>(s);
+        if (arr != null)
         {
-            p = new DriverProfile
-            {
-                Id = NewId(),
-                UserId = uid,
-                FullName = "New Driver",
-                Phone = null,
-                Bio = null,
-                Rating = 0,
-                Skills = null,
-                Location = null,
-                IsAvailable = true,
-                ImgUrl = null,
-                CreatedAt = DateTime.UtcNow,
-                UpdatedAt = DateTime.UtcNow
-            };
-            _db.DriverProfiles.Add(p);
-            await _db.SaveChangesAsync();
+          var clean = arr
+              .Where(x => !string.IsNullOrWhiteSpace(x))
+              .Select(x => x.Trim())
+              .Distinct(StringComparer.OrdinalIgnoreCase)
+              .ToList();
+          return JsonSerializer.Serialize(clean);
         }
-
-        return ApiResponse<DriverProfile>.Ok(p);
+      }
+      catch { /* rơi xuống CSV parse */ }
     }
 
-    [Authorize(Roles = "Driver")]
-    [HttpPut("me")]
-    [Consumes("application/json")]
-    [SwaggerOperation(Summary = "Update My Driver Profile (upsert)")]
-    [ProducesResponseType(typeof(ApiResponse<DriverProfile>), 200)]
-    public async Task<ActionResult<ApiResponse<DriverProfile>>> UpdateMyDriver([FromBody] UpdateDriverDto dto)
+    // 2) CSV -> array
+    var parts = s.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+                 .Select(x => x.Trim())
+                 .Where(x => x.Length > 0)
+                 .Distinct(StringComparer.OrdinalIgnoreCase)
+                 .ToList();
+
+    // Nếu người dùng chỉ gõ một từ không có dấu phẩy vẫn OK
+    if (parts.Count == 0 && s.Length > 0) parts = new List<string> { s };
+
+    return JsonSerializer.Serialize(parts);
+  }
+
+  // ========= Me =========
+  [Authorize(Roles = "Driver")]
+  [HttpGet("me")]
+  [SwaggerOperation(Summary = "Get My Driver Profile (auto-create if missing)")]
+  [ProducesResponseType(typeof(ApiResponse<DriverProfile>), 200)]
+  public async Task<ActionResult<ApiResponse<DriverProfile>>> GetMyDriver()
+  {
+    var uid = GetUserId();
+    if (uid == null) return ApiResponse<DriverProfile>.Fail("UNAUTHORIZED", "Missing user id");
+
+    var p = await _db.DriverProfiles.FirstOrDefaultAsync(x => x.UserId == uid);
+    if (p == null)
     {
-        var uid = GetUserId();
-        if (uid == null) return ApiResponse<DriverProfile>.Fail("UNAUTHORIZED", "Missing user id");
-
-        var p = await _db.DriverProfiles.FirstOrDefaultAsync(x => x.UserId == uid);
-        if (p == null)
-        {
-            p = new DriverProfile
-            {
-                Id = NewId(),
-                UserId = uid,
-                FullName = dto.FullName ?? "New Driver",
-                Phone = dto.Phone,
-                Bio = null,
-                Rating = 0,
-                Skills = NormalizeSkills(dto.Skills),
-                Location = dto.Location,
-                IsAvailable = true,
-                ImgUrl = UrlHelper.TryNormalizeUrl(dto.ImgUrl),
-                CreatedAt = DateTime.UtcNow,
-                UpdatedAt = DateTime.UtcNow
-            };
-            _db.DriverProfiles.Add(p);
-        }
-        else
-        {
-            if (dto.FullName is not null) p.FullName = dto.FullName;
-            if (dto.Phone is not null) p.Phone = dto.Phone;
-            if (dto.Skills is not null) p.Skills = NormalizeSkills(dto.Skills);
-
-            if (dto.Location is not null) p.Location = dto.Location;
-            if (dto.ImgUrl is not null)
-            {
-                var normalized = UrlHelper.TryNormalizeUrl(dto.ImgUrl);
-                if (normalized == null)
-                    return ApiResponse<DriverProfile>.Fail("IMG_URL_INVALID", "Ảnh đại diện không phải URL hợp lệ (http/https).");
-                p.ImgUrl = normalized;
-            }
-
-            if (dto.IsAvailable is not null) p.IsAvailable = dto.IsAvailable.Value;
-
-            p.UpdatedAt = DateTime.UtcNow;
-        }
-
-        await _db.SaveChangesAsync();
-        return ApiResponse<DriverProfile>.Ok(p);
+      p = new DriverProfile
+      {
+        Id = NewId(),
+        UserId = uid,
+        FullName = "New Driver",
+        Phone = null,
+        Bio = null,
+        Rating = 0,
+        Skills = null,
+        Location = null,
+        IsAvailable = true,
+        ImgUrl = null,
+        CreatedAt = DateTime.UtcNow,
+        UpdatedAt = DateTime.UtcNow
+      };
+      _db.DriverProfiles.Add(p);
+      await _db.SaveChangesAsync();
     }
 
+    return ApiResponse<DriverProfile>.Ok(p);
+  }
 
-    // ========= Public listing & detail =========
-    [HttpGet]
-    [SwaggerOperation(Summary = "List Drivers")]
-    [ProducesResponseType(typeof(ApiResponse<PageResult<DriverProfile>>), 200)]
-    public async Task<ActionResult<ApiResponse<PageResult<DriverProfile>>>> ListDrivers(
-        [FromQuery] string? name = null,
-        [FromQuery] string? skills = null,
-        [FromQuery] string? location = null,
-        [FromQuery] bool? isAvailable = null,
-        [FromQuery] decimal? minRating = null,
-        [FromQuery] int page = 1, [FromQuery] int size = 10, [FromQuery] string? sort = "rating:desc")
+  [Authorize(Roles = "Driver")]
+  [HttpPut("me")]
+  [Consumes("application/json")]
+  [SwaggerOperation(Summary = "Update My Driver Profile (upsert)")]
+  [ProducesResponseType(typeof(ApiResponse<DriverProfile>), 200)]
+  public async Task<ActionResult<ApiResponse<DriverProfile>>> UpdateMyDriver([FromBody] UpdateDriverDto dto)
+  {
+    var uid = GetUserId();
+    if (uid == null) return ApiResponse<DriverProfile>.Fail("UNAUTHORIZED", "Missing user id");
+
+    var p = await _db.DriverProfiles.FirstOrDefaultAsync(x => x.UserId == uid);
+    if (p == null)
     {
-        var q = _db.DriverProfiles.AsQueryable();
-        if (!string.IsNullOrWhiteSpace(name)) q = q.Where(d => d.FullName.Contains(name));
-        if (!string.IsNullOrWhiteSpace(skills))
-        {
-            var parts = skills.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
-            foreach (var p in parts) q = q.Where(d => d.Skills != null && d.Skills.Contains(p));
-        }
-        if (!string.IsNullOrWhiteSpace(location)) q = q.Where(d => d.Location == location);
-        if (isAvailable.HasValue) q = q.Where(d => d.IsAvailable == isAvailable.Value);
-        if (minRating.HasValue) q = q.Where(d => d.Rating >= minRating.Value);
-
-        if (!string.IsNullOrWhiteSpace(sort))
-        {
-            var s = sort.Split(':'); var field = s[0]; var dir = s.Length > 1 ? s[1] : "asc";
-            q = (field, dir) switch
-            {
-                ("name", "asc") => q.OrderBy(d => d.FullName),
-                ("name", "desc") => q.OrderByDescending(d => d.FullName),
-                ("rating", "asc") => q.OrderBy(d => d.Rating),
-                ("rating", "desc") => q.OrderByDescending(d => d.Rating),
-                _ => q.OrderByDescending(d => d.Rating)
-            };
-        }
-
-        var total = await q.CountAsync();
-        var items = await q.Skip((page - 1) * size).Take(size).ToListAsync();
-        return ApiResponse<PageResult<DriverProfile>>.Ok(new PageResult<DriverProfile>
-        {
-            page = page,
-            size = size,
-            totalItems = total,
-            totalPages = (int)Math.Ceiling(total / (double)size),
-            hasNext = page * size < total,
-            hasPrev = page > 1,
-            items = items
-        });
+      p = new DriverProfile
+      {
+        Id = NewId(),
+        UserId = uid,
+        FullName = dto.FullName ?? "New Driver",
+        Phone = dto.Phone,
+        Bio = null,
+        Rating = 0,
+        Skills = NormalizeSkills(dto.Skills),
+        Location = dto.Location,
+        IsAvailable = true,
+        ImgUrl = UrlHelper.TryNormalizeUrl(dto.ImgUrl),
+        CreatedAt = DateTime.UtcNow,
+        UpdatedAt = DateTime.UtcNow
+      };
+      _db.DriverProfiles.Add(p);
     }
-
-    [HttpGet("{userId}")]
-    [SwaggerOperation(Summary = "Get Driver by UserId")]
-    [ProducesResponseType(typeof(ApiResponse<DriverProfile>), 200)]
-    public async Task<ActionResult<ApiResponse<DriverProfile>>> GetDriverByUserId([FromRoute] string userId)
+    else
     {
-        var p = await _db.DriverProfiles.FirstOrDefaultAsync(x => x.UserId == userId);
-        if (p == null) return ApiResponse<DriverProfile>.Fail("NOT_FOUND", "Driver không tồn tại");
-        return ApiResponse<DriverProfile>.Ok(p);
+      if (dto.FullName is not null) p.FullName = dto.FullName;
+      if (dto.Phone is not null) p.Phone = dto.Phone;
+      if (dto.Bio is not null) p.Bio = dto.Bio;
+      if (dto.Skills is not null) p.Skills = NormalizeSkills(dto.Skills);
+
+      if (dto.Location is not null) p.Location = dto.Location;
+      if (dto.ImgUrl is not null)
+      {
+        var normalized = UrlHelper.TryNormalizeUrl(dto.ImgUrl);
+        if (normalized == null)
+          return ApiResponse<DriverProfile>.Fail("IMG_URL_INVALID", "Ảnh đại diện không phải URL hợp lệ (http/https).");
+        p.ImgUrl = normalized;
+      }
+
+      if (dto.IsAvailable is not null) p.IsAvailable = dto.IsAvailable.Value;
+
+      p.UpdatedAt = DateTime.UtcNow;
     }
 
-    // ========= Availability =========
-    [Authorize(Roles = "Driver")]
-    [HttpPost("{userId}/availability")]
-    [SwaggerOperation(Summary = "Set Availability")]
-    [ProducesResponseType(typeof(ApiResponse<DriverProfile>), 200)]
-    public async Task<ActionResult<ApiResponse<DriverProfile>>> SetAvailability([FromRoute] string userId, [FromBody] SetAvailabilityDto dto)
+    await _db.SaveChangesAsync();
+    return ApiResponse<DriverProfile>.Ok(p);
+  }
+
+
+  // ========= Public listing & detail =========
+  [HttpGet]
+  [SwaggerOperation(Summary = "List Drivers")]
+  [ProducesResponseType(typeof(ApiResponse<PageResult<DriverProfile>>), 200)]
+  public async Task<ActionResult<ApiResponse<PageResult<DriverProfile>>>> ListDrivers(
+      [FromQuery] string? name = null,
+      [FromQuery] string? skills = null,
+      [FromQuery] string? location = null,
+      [FromQuery] bool? isAvailable = null,
+      [FromQuery] decimal? minRating = null,
+      [FromQuery] int page = 1, [FromQuery] int size = 10, [FromQuery] string? sort = "rating:desc")
+  {
+    var q = _db.DriverProfiles.AsQueryable();
+    if (!string.IsNullOrWhiteSpace(name)) q = q.Where(d => d.FullName.Contains(name));
+    if (!string.IsNullOrWhiteSpace(skills))
     {
-        var p = await GetOwnedDriverAsync(userId);
-        if (p == null) return Forbidden<DriverProfile>();
-        p.IsAvailable = dto.IsAvailable;
-        p.UpdatedAt = DateTime.UtcNow;
-        await _db.SaveChangesAsync();
-        return ApiResponse<DriverProfile>.Ok(p);
+      var parts = skills.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+      foreach (var p in parts) q = q.Where(d => d.Skills != null && d.Skills.Contains(p));
     }
+    if (!string.IsNullOrWhiteSpace(location)) q = q.Where(d => d.Location == location);
+    if (isAvailable.HasValue) q = q.Where(d => d.IsAvailable == isAvailable.Value);
+    if (minRating.HasValue) q = q.Where(d => d.Rating >= minRating.Value);
 
-    // ========= Wallet =========
-    [Authorize(Roles = "Driver")]
-    [HttpGet("{userId}/wallet")]
-    [SwaggerOperation(Summary = "Get Driver Wallet")]
-    [ProducesResponseType(typeof(ApiResponse<Wallet>), 200)]
-    public async Task<ActionResult<ApiResponse<Wallet>>> GetWallet([FromRoute] string userId)
+    if (!string.IsNullOrWhiteSpace(sort))
     {
-        var p = await GetOwnedDriverAsync(userId);
-        if (p == null) return Forbidden<Wallet>();
-
-        var wallet = await _db.Wallets.FirstOrDefaultAsync(w => w.OwnerType == "Driver" && w.OwnerRefId == userId);
-        if (wallet == null)
-        {
-            wallet = new Wallet
-            {
-                Id = NewId(),
-                OwnerType = "Driver",
-                OwnerRefId = userId,
-                BalanceCents = 0,
-                LowBalanceThreshold = 10000,
-                UpdatedAt = DateTime.UtcNow
-            };
-            _db.Wallets.Add(wallet);
-            await _db.SaveChangesAsync();
-        }
-        return ApiResponse<Wallet>.Ok(wallet);
+      var s = sort.Split(':'); var field = s[0]; var dir = s.Length > 1 ? s[1] : "asc";
+      q = (field, dir) switch
+      {
+        ("name", "asc") => q.OrderBy(d => d.FullName),
+        ("name", "desc") => q.OrderByDescending(d => d.FullName),
+        ("rating", "asc") => q.OrderBy(d => d.Rating),
+        ("rating", "desc") => q.OrderByDescending(d => d.Rating),
+        _ => q.OrderByDescending(d => d.Rating)
+      };
     }
 
-    [Authorize(Roles = "Driver")]
-    [HttpGet("{userId}/transactions")]
-    [SwaggerOperation(Summary = "List Driver Transactions")]
-    [ProducesResponseType(typeof(ApiResponse<PageResult<Transaction>>), 200)]
-    public async Task<ActionResult<ApiResponse<PageResult<Transaction>>>> GetTransactions(
-        [FromRoute] string userId, [FromQuery] int page = 1, [FromQuery] int size = 10)
+    var total = await q.CountAsync();
+    var items = await q.Skip((page - 1) * size).Take(size).ToListAsync();
+    return ApiResponse<PageResult<DriverProfile>>.Ok(new PageResult<DriverProfile>
     {
-        var p = await GetOwnedDriverAsync(userId);
-        if (p == null) return Forbidden<PageResult<Transaction>>();
+      page = page,
+      size = size,
+      totalItems = total,
+      totalPages = (int)Math.Ceiling(total / (double)size),
+      hasNext = page * size < total,
+      hasPrev = page > 1,
+      items = items
+    });
+  }
 
-        var wallet = await _db.Wallets.FirstOrDefaultAsync(w => w.OwnerType == "Driver" && w.OwnerRefId == userId);
-        if (wallet == null)
-        {
-            return ApiResponse<PageResult<Transaction>>.Ok(new PageResult<Transaction>
-            {
-                page = page,
-                size = size,
-                totalItems = 0,
-                totalPages = 0,
-                hasNext = false,
-                hasPrev = false,
-                items = Array.Empty<Transaction>()
-            });
-        }
+  [HttpGet("{userId}")]
+  [SwaggerOperation(Summary = "Get Driver by UserId")]
+  [ProducesResponseType(typeof(ApiResponse<DriverProfile>), 200)]
+  public async Task<ActionResult<ApiResponse<DriverProfile>>> GetDriverByUserId([FromRoute] string userId)
+  {
+    var p = await _db.DriverProfiles.FirstOrDefaultAsync(x => x.UserId == userId);
+    if (p == null) return ApiResponse<DriverProfile>.Fail("NOT_FOUND", "Driver không tồn tại");
+    return ApiResponse<DriverProfile>.Ok(p);
+  }
 
-        var q = _db.Transactions.Where(t => t.FromWalletId == wallet.Id || t.ToWalletId == wallet.Id)
-                                .OrderByDescending(t => t.CreatedAt);
-        var total = await q.CountAsync();
-        var items = await q.Skip((page - 1) * size).Take(size).ToListAsync();
-        return ApiResponse<PageResult<Transaction>>.Ok(new PageResult<Transaction>
-        {
-            page = page,
-            size = size,
-            totalItems = total,
-            totalPages = (int)Math.Ceiling(total / (double)size),
-            hasNext = page * size < total,
-            hasPrev = page > 1,
-            items = items
-        });
-    }
+  // ========= Availability =========
+  [Authorize(Roles = "Driver")]
+  [HttpPost("{userId}/availability")]
+  [SwaggerOperation(Summary = "Set Availability")]
+  [ProducesResponseType(typeof(ApiResponse<DriverProfile>), 200)]
+  public async Task<ActionResult<ApiResponse<DriverProfile>>> SetAvailability([FromRoute] string userId, [FromBody] SetAvailabilityDto dto)
+  {
+    var p = await GetOwnedDriverAsync(userId);
+    if (p == null) return Forbidden<DriverProfile>();
+    p.IsAvailable = dto.IsAvailable;
+    p.UpdatedAt = DateTime.UtcNow;
+    await _db.SaveChangesAsync();
+    return ApiResponse<DriverProfile>.Ok(p);
+  }
 
-    [Authorize(Roles = "Driver")]
-    [HttpPost("{userId}/wallet/withdraw")]
-    [SwaggerOperation(Summary = "Withdraw from Driver Wallet")]
-    [ProducesResponseType(typeof(ApiResponse<object>), 200)]
-    public async Task<ActionResult<ApiResponse<object>>> Withdraw([FromRoute] string userId, [FromBody] WithdrawDto dto)
+  // ========= Wallet =========
+  [Authorize(Roles = "Driver")]
+  [HttpGet("{userId}/wallet")]
+  [SwaggerOperation(Summary = "Get Driver Wallet")]
+  [ProducesResponseType(typeof(ApiResponse<Wallet>), 200)]
+  public async Task<ActionResult<ApiResponse<Wallet>>> GetWallet([FromRoute] string userId)
+  {
+    var p = await GetOwnedDriverAsync(userId);
+    if (p == null) return Forbidden<Wallet>();
+
+    var wallet = await _db.Wallets.FirstOrDefaultAsync(w => w.OwnerType == "Driver" && w.OwnerRefId == userId);
+    if (wallet == null)
     {
-        var p = await GetOwnedDriverAsync(userId);
-        if (p == null) return Forbidden<object>();
-        if (dto.AmountCents <= 0) return ApiResponse<object>.Fail("VALIDATION", "AmountCents phải > 0");
-
-        var wallet = await _db.Wallets.FirstOrDefaultAsync(w => w.OwnerType == "Driver" && w.OwnerRefId == userId);
-        if (wallet == null || wallet.BalanceCents < dto.AmountCents)
-            return ApiResponse<object>.Fail("INSUFFICIENT_FUNDS", "Số dư không đủ");
-
-        if (!string.IsNullOrWhiteSpace(dto.IdempotencyKey))
-        {
-            var exists = await _db.Transactions.AnyAsync(t => t.IdempotencyKey == dto.IdempotencyKey);
-            if (exists) return ApiResponse<object>.Ok(new { balance = wallet.BalanceCents });
-        }
-
-        wallet.BalanceCents -= dto.AmountCents;
-        wallet.UpdatedAt = DateTime.UtcNow;
-
-        var tx = new Transaction
-        {
-            Id = NewId(),
-            FromWalletId = wallet.Id,
-            ToWalletId = null,
-            AmountCents = dto.AmountCents,
-            Status = TxStatus.Completed,
-            IdempotencyKey = dto.IdempotencyKey,
-            CreatedAt = DateTime.UtcNow
-        };
-        _db.Transactions.Add(tx);
-        await _db.SaveChangesAsync();
-
-        return ApiResponse<object>.Ok(new { wallet.Id, balance = wallet.BalanceCents });
+      wallet = new Wallet
+      {
+        Id = NewId(),
+        OwnerType = "Driver",
+        OwnerRefId = userId,
+        BalanceCents = 0,
+        LowBalanceThreshold = 10000,
+        UpdatedAt = DateTime.UtcNow
+      };
+      _db.Wallets.Add(wallet);
+      await _db.SaveChangesAsync();
     }
+    return ApiResponse<Wallet>.Ok(wallet);
+  }
 
-    // ========= Relationships / Companies =========
-    [HttpGet("{userId}/companies")]
-    [SwaggerOperation(Summary = "List Companies of Driver")]
-    [ProducesResponseType(typeof(ApiResponse<PageResult<Company>>), 200)]
-    public async Task<ActionResult<ApiResponse<PageResult<Company>>>> ListMyCompanies(
-        [FromRoute] string userId, [FromQuery] int page = 1, [FromQuery] int size = 10)
+  [Authorize(Roles = "Driver")]
+  [HttpGet("{userId}/transactions")]
+  [SwaggerOperation(Summary = "List Driver Transactions")]
+  [ProducesResponseType(typeof(ApiResponse<PageResult<Transaction>>), 200)]
+  public async Task<ActionResult<ApiResponse<PageResult<Transaction>>>> GetTransactions(
+      [FromRoute] string userId, [FromQuery] int page = 1, [FromQuery] int size = 10)
+  {
+    var p = await GetOwnedDriverAsync(userId);
+    if (p == null) return Forbidden<PageResult<Transaction>>();
+
+    var wallet = await _db.Wallets.FirstOrDefaultAsync(w => w.OwnerType == "Driver" && w.OwnerRefId == userId);
+    if (wallet == null)
     {
-        var q = from rel in _db.CompanyDriverRelations
-                where rel.DriverUserId == userId
-                join c in _db.Companies on rel.CompanyId equals c.Id
-                orderby c.Name
-                select c;
-
-        var total = await q.CountAsync();
-        var items = await q.Skip((page - 1) * size).Take(size).ToListAsync();
-        return ApiResponse<PageResult<Company>>.Ok(new PageResult<Company>
-        {
-            page = page,
-            size = size,
-            totalItems = total,
-            totalPages = (int)Math.Ceiling(total / (double)size),
-            hasNext = page * size < total,
-            hasPrev = page > 1,
-            items = items
-        });
+      return ApiResponse<PageResult<Transaction>>.Ok(new PageResult<Transaction>
+      {
+        page = page,
+        size = size,
+        totalItems = 0,
+        totalPages = 0,
+        hasNext = false,
+        hasPrev = false,
+        items = Array.Empty<Transaction>()
+      });
     }
 
-    // ========= Applications (apply to company) =========
-    [Authorize(Roles = "Driver")]
-    [HttpPost("{userId}/applications")]
-    [SwaggerOperation(Summary = "Apply to Company")]
-    [ProducesResponseType(typeof(ApiResponse<JobApplication>), 200)]
-    public async Task<ActionResult<ApiResponse<JobApplication>>> ApplyToCompany([FromRoute] string userId, [FromBody] ApplyCompanyDto dto)
+    var q = _db.Transactions.Where(t => t.FromWalletId == wallet.Id || t.ToWalletId == wallet.Id)
+                            .OrderByDescending(t => t.CreatedAt);
+    var total = await q.CountAsync();
+    var items = await q.Skip((page - 1) * size).Take(size).ToListAsync();
+    return ApiResponse<PageResult<Transaction>>.Ok(new PageResult<Transaction>
     {
-        var p = await GetOwnedDriverAsync(userId);
-        if (p == null) return Forbidden<JobApplication>();
-        if (string.IsNullOrWhiteSpace(dto.CompanyId)) return ApiResponse<JobApplication>.Fail("VALIDATION", "CompanyId bắt buộc");
+      page = page,
+      size = size,
+      totalItems = total,
+      totalPages = (int)Math.Ceiling(total / (double)size),
+      hasNext = page * size < total,
+      hasPrev = page > 1,
+      items = items
+    });
+  }
 
-        var dup = await _db.JobApplications.AnyAsync(a => a.CompanyId == dto.CompanyId && a.DriverUserId == userId && a.Status == ApplyStatus.Applied);
-        if (dup) return ApiResponse<JobApplication>.Fail("DUPLICATE", "Bạn đã ứng tuyển và đang chờ xử lý");
+  [Authorize(Roles = "Driver")]
+  [HttpPost("{userId}/wallet/withdraw")]
+  [SwaggerOperation(Summary = "Withdraw from Driver Wallet")]
+  [ProducesResponseType(typeof(ApiResponse<object>), 200)]
+  public async Task<ActionResult<ApiResponse<object>>> Withdraw([FromRoute] string userId, [FromBody] WithdrawDto dto)
+  {
+    var p = await GetOwnedDriverAsync(userId);
+    if (p == null) return Forbidden<object>();
+    if (dto.AmountCents <= 0) return ApiResponse<object>.Fail("VALIDATION", "AmountCents phải > 0");
 
-        var app = new JobApplication
-        {
-            Id = NewId(),
-            CompanyId = dto.CompanyId!,
-            DriverUserId = userId,
-            Status = ApplyStatus.Applied,
-            CreatedAt = DateTime.UtcNow,
-            ExpiresAt = dto.ExpiresAt
-        };
-        _db.JobApplications.Add(app);
-        await _db.SaveChangesAsync();
-        return ApiResponse<JobApplication>.Ok(app);
-    }
+    var wallet = await _db.Wallets.FirstOrDefaultAsync(w => w.OwnerType == "Driver" && w.OwnerRefId == userId);
+    if (wallet == null || wallet.BalanceCents < dto.AmountCents)
+      return ApiResponse<object>.Fail("INSUFFICIENT_FUNDS", "Số dư không đủ");
 
-    [Authorize(Roles = "Driver")]
-    [HttpGet("{userId}/applications")]
-    [SwaggerOperation(Summary = "List My Applications")]
-    [ProducesResponseType(typeof(ApiResponse<PageResult<JobApplication>>), 200)]
-    public async Task<ActionResult<ApiResponse<PageResult<JobApplication>>>> ListMyApplications(
-        [FromRoute] string userId, [FromQuery] int page = 1, [FromQuery] int size = 10, [FromQuery] string? status = null)
+    if (!string.IsNullOrWhiteSpace(dto.IdempotencyKey))
     {
-        var p = await GetOwnedDriverAsync(userId);
-        if (p == null) return Forbidden<PageResult<JobApplication>>();
-
-        var q = _db.JobApplications.Where(a => a.DriverUserId == userId);
-        if (!string.IsNullOrWhiteSpace(status) && Enum.TryParse<ApplyStatus>(status, true, out var st))
-            q = q.Where(a => a.Status == st);
-
-        q = q.OrderByDescending(a => a.CreatedAt);
-        var total = await q.CountAsync();
-        var items = await q.Skip((page - 1) * size).Take(size).ToListAsync();
-        return ApiResponse<PageResult<JobApplication>>.Ok(new PageResult<JobApplication>
-        {
-            page = page,
-            size = size,
-            totalItems = total,
-            totalPages = (int)Math.Ceiling(total / (double)size),
-            hasNext = page * size < total,
-            hasPrev = page > 1,
-            items = items
-        });
+      var exists = await _db.Transactions.AnyAsync(t => t.IdempotencyKey == dto.IdempotencyKey);
+      if (exists) return ApiResponse<object>.Ok(new { balance = wallet.BalanceCents });
     }
 
-    // ========= Invitations =========
-    [Authorize(Roles = "Driver")]
-    [HttpGet("{userId}/invitations")]
-    [SwaggerOperation(Summary = "List My Invitations")]
-    [ProducesResponseType(typeof(ApiResponse<PageResult<Invite>>), 200)]
-    public async Task<ActionResult<ApiResponse<PageResult<Invite>>>> ListMyInvitations(
-        [FromRoute] string userId, [FromQuery] int page = 1, [FromQuery] int size = 10)
+    wallet.BalanceCents -= dto.AmountCents;
+    wallet.UpdatedAt = DateTime.UtcNow;
+
+    var tx = new Transaction
     {
-        var p = await GetOwnedDriverAsync(userId);
-        if (p == null) return Forbidden<PageResult<Invite>>();
+      Id = NewId(),
+      FromWalletId = wallet.Id,
+      ToWalletId = null,
+      AmountCents = dto.AmountCents,
+      Status = TxStatus.Completed,
+      IdempotencyKey = dto.IdempotencyKey,
+      CreatedAt = DateTime.UtcNow
+    };
+    _db.Transactions.Add(tx);
+    await _db.SaveChangesAsync();
 
-        var q = _db.Invites.Where(i => i.DriverUserId == userId).OrderByDescending(i => i.CreatedAt);
-        var total = await q.CountAsync();
-        var items = await q.Skip((page - 1) * size).Take(size).ToListAsync();
-        return ApiResponse<PageResult<Invite>>.Ok(new PageResult<Invite>
-        {
-            page = page,
-            size = size,
-            totalItems = total,
-            totalPages = (int)Math.Ceiling(total / (double)size),
-            hasNext = page * size < total,
-            hasPrev = page > 1,
-            items = items
-        });
-    }
+    return ApiResponse<object>.Ok(new { wallet.Id, balance = wallet.BalanceCents });
+  }
 
-    [Authorize(Roles = "Driver")]
-    [HttpPost("{userId}/invitations/{inviteId}/accept")]
-    [SwaggerOperation(Summary = "Accept Invitation")]
-    [ProducesResponseType(typeof(ApiResponse<object>), 200)]
-    public async Task<ActionResult<ApiResponse<object>>> AcceptInvitation([FromRoute] string userId, [FromRoute] string inviteId)
+  // ========= Relationships / Companies =========
+  [HttpGet("{userId}/companies")]
+  [SwaggerOperation(Summary = "List Companies of Driver")]
+  [ProducesResponseType(typeof(ApiResponse<PageResult<Company>>), 200)]
+  public async Task<ActionResult<ApiResponse<PageResult<Company>>>> ListMyCompanies(
+      [FromRoute] string userId, [FromQuery] int page = 1, [FromQuery] int size = 10)
+  {
+    var q = from rel in _db.CompanyDriverRelations
+            where rel.DriverUserId == userId
+            join c in _db.Companies on rel.CompanyId equals c.Id
+            orderby c.Name
+            select c;
+
+    var total = await q.CountAsync();
+    var items = await q.Skip((page - 1) * size).Take(size).ToListAsync();
+    return ApiResponse<PageResult<Company>>.Ok(new PageResult<Company>
     {
-        var p = await GetOwnedDriverAsync(userId);
-        if (p == null) return Forbidden<object>();
+      page = page,
+      size = size,
+      totalItems = total,
+      totalPages = (int)Math.Ceiling(total / (double)size),
+      hasNext = page * size < total,
+      hasPrev = page > 1,
+      items = items
+    });
+  }
 
-        var inv = await _db.Invites.FirstOrDefaultAsync(i => i.Id == inviteId && i.DriverUserId == userId);
-        if (inv == null) return ApiResponse<object>.Fail("NOT_FOUND", "Invite không tồn tại");
-        if (inv.Status != "Sent") return ApiResponse<object>.Fail("INVALID_STATE", "Invite đã được xử lý");
+  // ========= Applications (apply to company) =========
+  [Authorize(Roles = "Driver")]
+  [HttpPost("{userId}/applications")]
+  [SwaggerOperation(Summary = "Apply to Company")]
+  [ProducesResponseType(typeof(ApiResponse<JobApplication>), 200)]
+  public async Task<ActionResult<ApiResponse<JobApplication>>> ApplyToCompany([FromRoute] string userId, [FromBody] ApplyCompanyDto dto)
+  {
+    var p = await GetOwnedDriverAsync(userId);
+    if (p == null) return Forbidden<JobApplication>();
+    if (string.IsNullOrWhiteSpace(dto.CompanyId)) return ApiResponse<JobApplication>.Fail("VALIDATION", "CompanyId bắt buộc");
 
-        inv.Status = "Accepted";
+    var dup = await _db.JobApplications.AnyAsync(a => a.CompanyId == dto.CompanyId && a.DriverUserId == userId && a.Status == ApplyStatus.Applied);
+    if (dup) return ApiResponse<JobApplication>.Fail("DUPLICATE", "Bạn đã ứng tuyển và đang chờ xử lý");
 
-        var exists = await _db.CompanyDriverRelations.AnyAsync(r => r.CompanyId == inv.CompanyId && r.DriverUserId == userId);
-        if (!exists)
-        {
-            _db.CompanyDriverRelations.Add(new CompanyDriverRelation
-            {
-                Id = NewId(),
-                CompanyId = inv.CompanyId,
-                DriverUserId = userId,
-                BaseSalaryCents = inv.BaseSalaryCents,
-                CreatedAt = DateTime.UtcNow,
-                UpdatedAt = DateTime.UtcNow
-            });
-        }
-
-        await _db.SaveChangesAsync();
-        return ApiResponse<object>.Ok(new { inviteId = inv.Id, status = inv.Status });
-    }
-
-    [Authorize(Roles = "Driver")]
-    [HttpPost("{userId}/invitations/{inviteId}/reject")]
-    [SwaggerOperation(Summary = "Reject Invitation")]
-    [ProducesResponseType(typeof(ApiResponse<object>), 200)]
-    public async Task<ActionResult<ApiResponse<object>>> RejectInvitation([FromRoute] string userId, [FromRoute] string inviteId)
+    var app = new JobApplication
     {
-        var p = await GetOwnedDriverAsync(userId);
-        if (p == null) return Forbidden<object>();
+      Id = NewId(),
+      CompanyId = dto.CompanyId!,
+      DriverUserId = userId,
+      Status = ApplyStatus.Applied,
+      CreatedAt = DateTime.UtcNow,
+      ExpiresAt = dto.ExpiresAt
+    };
+    _db.JobApplications.Add(app);
+    await _db.SaveChangesAsync();
+    return ApiResponse<JobApplication>.Ok(app);
+  }
 
-        var inv = await _db.Invites.FirstOrDefaultAsync(i => i.Id == inviteId && i.DriverUserId == userId);
-        if (inv == null) return ApiResponse<object>.Fail("NOT_FOUND", "Invite không tồn tại");
-        if (inv.Status != "Sent") return ApiResponse<object>.Fail("INVALID_STATE", "Invite đã được xử lý");
+  [Authorize(Roles = "Driver")]
+  [HttpGet("{userId}/applications")]
+  [SwaggerOperation(Summary = "List My Applications")]
+  [ProducesResponseType(typeof(ApiResponse<PageResult<JobApplication>>), 200)]
+  public async Task<ActionResult<ApiResponse<PageResult<JobApplication>>>> ListMyApplications(
+      [FromRoute] string userId, [FromQuery] int page = 1, [FromQuery] int size = 10, [FromQuery] string? status = null)
+  {
+    var p = await GetOwnedDriverAsync(userId);
+    if (p == null) return Forbidden<PageResult<JobApplication>>();
 
-        inv.Status = "Rejected";
-        await _db.SaveChangesAsync();
-        return ApiResponse<object>.Ok(new { inviteId = inv.Id, status = inv.Status });
+    var q = _db.JobApplications.Where(a => a.DriverUserId == userId);
+    if (!string.IsNullOrWhiteSpace(status) && Enum.TryParse<ApplyStatus>(status, true, out var st))
+      q = q.Where(a => a.Status == st);
+
+    q = q.OrderByDescending(a => a.CreatedAt);
+    var total = await q.CountAsync();
+    var items = await q.Skip((page - 1) * size).Take(size).ToListAsync();
+    return ApiResponse<PageResult<JobApplication>>.Ok(new PageResult<JobApplication>
+    {
+      page = page,
+      size = size,
+      totalItems = total,
+      totalPages = (int)Math.Ceiling(total / (double)size),
+      hasNext = page * size < total,
+      hasPrev = page > 1,
+      items = items
+    });
+  }
+
+  // ========= Invitations =========
+  [Authorize(Roles = "Driver")]
+  [HttpGet("{userId}/invitations")]
+  [SwaggerOperation(Summary = "List My Invitations")]
+  [ProducesResponseType(typeof(ApiResponse<PageResult<Invite>>), 200)]
+  public async Task<ActionResult<ApiResponse<PageResult<Invite>>>> ListMyInvitations(
+      [FromRoute] string userId, [FromQuery] int page = 1, [FromQuery] int size = 10)
+  {
+    var p = await GetOwnedDriverAsync(userId);
+    if (p == null) return Forbidden<PageResult<Invite>>();
+
+    var q = _db.Invites.Where(i => i.DriverUserId == userId).OrderByDescending(i => i.CreatedAt);
+    var total = await q.CountAsync();
+    var items = await q.Skip((page - 1) * size).Take(size).ToListAsync();
+    return ApiResponse<PageResult<Invite>>.Ok(new PageResult<Invite>
+    {
+      page = page,
+      size = size,
+      totalItems = total,
+      totalPages = (int)Math.Ceiling(total / (double)size),
+      hasNext = page * size < total,
+      hasPrev = page > 1,
+      items = items
+    });
+  }
+
+  [Authorize(Roles = "Driver")]
+  [HttpPost("{userId}/invitations/{inviteId}/accept")]
+  [SwaggerOperation(Summary = "Accept Invitation")]
+  [ProducesResponseType(typeof(ApiResponse<object>), 200)]
+  public async Task<ActionResult<ApiResponse<object>>> AcceptInvitation([FromRoute] string userId, [FromRoute] string inviteId)
+  {
+    var p = await GetOwnedDriverAsync(userId);
+    if (p == null) return Forbidden<object>();
+
+    var inv = await _db.Invites.FirstOrDefaultAsync(i => i.Id == inviteId && i.DriverUserId == userId);
+    if (inv == null) return ApiResponse<object>.Fail("NOT_FOUND", "Invite không tồn tại");
+    if (inv.Status != "Sent") return ApiResponse<object>.Fail("INVALID_STATE", "Invite đã được xử lý");
+
+    inv.Status = "Accepted";
+
+    var exists = await _db.CompanyDriverRelations.AnyAsync(r => r.CompanyId == inv.CompanyId && r.DriverUserId == userId);
+    if (!exists)
+    {
+      _db.CompanyDriverRelations.Add(new CompanyDriverRelation
+      {
+        Id = NewId(),
+        CompanyId = inv.CompanyId,
+        DriverUserId = userId,
+        BaseSalaryCents = inv.BaseSalaryCents,
+        CreatedAt = DateTime.UtcNow,
+        UpdatedAt = DateTime.UtcNow
+      });
     }
+
+    await _db.SaveChangesAsync();
+    return ApiResponse<object>.Ok(new { inviteId = inv.Id, status = inv.Status });
+  }
+
+  [Authorize(Roles = "Driver")]
+  [HttpPost("{userId}/invitations/{inviteId}/reject")]
+  [SwaggerOperation(Summary = "Reject Invitation")]
+  [ProducesResponseType(typeof(ApiResponse<object>), 200)]
+  public async Task<ActionResult<ApiResponse<object>>> RejectInvitation([FromRoute] string userId, [FromRoute] string inviteId)
+  {
+    var p = await GetOwnedDriverAsync(userId);
+    if (p == null) return Forbidden<object>();
+
+    var inv = await _db.Invites.FirstOrDefaultAsync(i => i.Id == inviteId && i.DriverUserId == userId);
+    if (inv == null) return ApiResponse<object>.Fail("NOT_FOUND", "Invite không tồn tại");
+    if (inv.Status != "Sent") return ApiResponse<object>.Fail("INVALID_STATE", "Invite đã được xử lý");
+
+    inv.Status = "Rejected";
+    await _db.SaveChangesAsync();
+    return ApiResponse<object>.Ok(new { inviteId = inv.Id, status = inv.Status });
+  }
 }
