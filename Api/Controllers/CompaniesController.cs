@@ -143,55 +143,6 @@ public class CompaniesController : ControllerBase
     return ApiResponse<Company>.Ok(p);
   }
 
-  // ========= Public list & detail =========
-  //   [HttpGet]
-  //   [SwaggerOperation(Summary = "List Companies")]
-  //   [ProducesResponseType(typeof(ApiResponse<PageResult<Company>>), 200)]
-  //   public async Task<ActionResult<ApiResponse<PageResult<Company>>>> ListCompanies(
-  //       [FromQuery] string? name = null,
-  //       [FromQuery] string? membership = null,
-  //       [FromQuery] bool? isActive = true,
-  //       [FromQuery] decimal? minRating = null,
-  //       [FromQuery] decimal? maxRating = null,
-  //       [FromQuery] int page = 1, [FromQuery] int size = 10, [FromQuery] string? sort = "name:asc")
-  //   {
-  //     var q = _db.Companies.AsQueryable();
-  //     if (!string.IsNullOrWhiteSpace(name)) q = q.Where(c => c.Name.Contains(name));
-  //     if (!string.IsNullOrWhiteSpace(membership)) q = q.Where(c => c.Membership == membership);
-  //     if (isActive.HasValue) q = q.Where(c => c.IsActive == isActive.Value);
-  //     if (minRating.HasValue) q = q.Where(c => c.Rating >= minRating.Value);
-  //     if (maxRating.HasValue) q = q.Where(c => c.Rating <= maxRating.Value);
-
-  //     if (!string.IsNullOrWhiteSpace(sort))
-  // {
-  //   var s = sort.Split(':'); var field = s[0]; var dir = s.Length > 1 ? s[1] : "asc";
-  //   q = (field, dir) switch
-  //   {
-  //     ("name", "desc") => q.OrderByDescending(c => c.Name),
-  //     ("name", "asc")  => q.OrderBy(c => c.Name),
-  //     ("rating", "desc") => q.OrderByDescending(c => c.Rating),
-  //     ("rating", "asc")  => q.OrderBy(c => c.Rating),
-  //     ("membership", "desc") => q.OrderByDescending(c => c.Membership),
-  //     ("membership", "asc")  => q.OrderBy(c => c.Membership),
-
-  //     _ => q.OrderBy(c => c.Name)
-  //   };
-  // }
-
-  //     var total = await q.CountAsync();
-  //     var items = await q.Skip((page - 1) * size).Take(size).ToListAsync();
-  //     return ApiResponse<PageResult<Company>>.Ok(new PageResult<Company>
-  //     {
-  //       page = page,
-  //       size = size,
-  //       totalItems = total,
-  //       totalPages = (int)Math.Ceiling(total / (double)size),
-  //       hasNext = page * size < total,
-  //       hasPrev = page > 1,
-  //       items = items
-  //     });
-  //   }
-
   [HttpGet]
   [SwaggerOperation(Summary = "List Companies")]
   [ProducesResponseType(typeof(ApiResponse<PageResult<Company>>), 200)]
@@ -905,15 +856,56 @@ public class CompaniesController : ControllerBase
   // ========= Invitations =========
   [Authorize(Roles = "Company")]
   [HttpPost("{id}/invitations")]
-  [SwaggerOperation(Summary = "Invite Driver")]
+  [SwaggerOperation(Summary = "Invite Driver (idempotent for active invites)")]
   [ProducesResponseType(typeof(ApiResponse<Invite>), 200)]
-  public async Task<ActionResult<ApiResponse<Invite>>> InviteDriver([FromRoute] string id, [FromBody] InviteDriverDto dto)
+  public async Task<ActionResult<ApiResponse<Invite>>> InviteDriver(
+    [FromRoute] string id,
+    [FromBody] InviteDriverDto dto)
   {
     var company = await GetOwnedCompanyAsync(id);
     if (company == null) return Forbidden<Invite>();
-    if (string.IsNullOrWhiteSpace(dto.DriverUserId)) return ApiResponse<Invite>.Fail("VALIDATION", "DriverUserId bắt buộc");
-    if (dto.BaseSalaryCents < 0) return ApiResponse<Invite>.Fail("VALIDATION", "BaseSalaryCents không âm");
 
+    if (string.IsNullOrWhiteSpace(dto.DriverUserId))
+      return ApiResponse<Invite>.Fail("VALIDATION", "DriverUserId bắt buộc");
+    if (dto.BaseSalaryCents < 0)
+      return ApiResponse<Invite>.Fail("VALIDATION", "BaseSalaryCents không âm");
+
+    var now = DateTime.UtcNow;
+
+    // Lấy invite gần nhất giữa company-driver
+    var latest = await _db.Invites
+      .Where(i => i.CompanyId == id && i.DriverUserId == dto.DriverUserId)
+      .OrderByDescending(i => i.CreatedAt)
+      .FirstOrDefaultAsync();
+
+    if (latest != null)
+    {
+      // Nếu đang Sent & chưa hết hạn => idempotent: trả lại invite cũ
+      if (latest.Status == "Sent")
+      {
+        var isExpired = latest.ExpiresAt.HasValue && latest.ExpiresAt.Value <= now;
+        if (!isExpired)
+        {
+          // có thể cân nhắc update lương/hạn mời nếu muốn "refresh" (tùy policy)
+          return ApiResponse<Invite>.Ok(latest);
+        }
+
+        // đã hết hạn => auto mark Expired
+        latest.Status = "Expired";
+        await _db.SaveChangesAsync();
+      }
+
+      // Nếu đã Accepted rồi thì không mời lại
+      if (latest.Status == "Accepted")
+      {
+        return ApiResponse<Invite>.Fail(
+          "ALREADY_ACCEPTED",
+          "Tài xế đã chấp nhận lời mời trước đó.");
+      }
+      // Nếu Rejected/Cancelled/Expired: cho phép tạo lời mời mới
+    }
+
+    // Tạo invite mới
     var inv = new Invite
     {
       Id = NewId(),
@@ -921,26 +913,95 @@ public class CompaniesController : ControllerBase
       DriverUserId = dto.DriverUserId!,
       BaseSalaryCents = dto.BaseSalaryCents,
       Status = "Sent",
-      CreatedAt = DateTime.UtcNow,
+      CreatedAt = now,
       ExpiresAt = dto.ExpiresAt
     };
+
     _db.Invites.Add(inv);
     await _db.SaveChangesAsync();
+
     return ApiResponse<Invite>.Ok(inv);
   }
+
+
+  // ========= Invitations: Cancel =========
+  [Authorize(Roles = "Company")]
+  [HttpPost("{id}/invitations/{inviteId}/cancel")]
+  [SwaggerOperation(Summary = "Cancel Invitation")]
+  [ProducesResponseType(typeof(ApiResponse<object>), 200)]
+  public async Task<ActionResult<ApiResponse<object>>> CancelInvitation(
+    [FromRoute] string id,
+    [FromRoute] string inviteId)
+  {
+    // Chỉ chủ company mới được thao tác
+    var company = await GetOwnedCompanyAsync(id);
+    if (company == null) return Forbidden<object>();
+
+    // Tìm invite thuộc company
+    var inv = await _db.Invites.FirstOrDefaultAsync(i => i.Id == inviteId && i.CompanyId == id);
+    if (inv == null) return ApiResponse<object>.Fail("NOT_FOUND", "Invite không tồn tại");
+
+    // Chỉ cho phép thu hồi khi đang ở trạng thái Sent
+    if (!string.Equals(inv.Status, "Sent", StringComparison.OrdinalIgnoreCase))
+      return ApiResponse<object>.Fail("INVALID_STATE", "Chỉ thu hồi được khi invite đang ở trạng thái Sent");
+
+    inv.Status = "Cancelled";
+    await _db.SaveChangesAsync();
+
+    return ApiResponse<object>.Ok(new { inviteId = inv.Id, status = inv.Status });
+  }
+
+
+  // [Authorize(Roles = "Company")]
+  // [HttpGet("{id}/invitations")]
+  // [SwaggerOperation(Summary = "List Invitations")]
+  // [ProducesResponseType(typeof(ApiResponse<PageResult<Invite>>), 200)]
+  // public async Task<ActionResult<ApiResponse<PageResult<Invite>>>> ListInvitations([FromRoute] string id, [FromQuery] int page = 1, [FromQuery] int size = 10, [FromQuery] string? status = null)
+  // {
+  //   var company = await GetOwnedCompanyAsync(id);
+  //   if (company == null) return Forbidden<PageResult<Invite>>();
+
+  //   var q = _db.Invites.Where(i => i.CompanyId == id).OrderByDescending(i => i.CreatedAt);
+  //   var total = await q.CountAsync();
+  //   var items = await q.Skip((page - 1) * size).Take(size).ToListAsync();
+  //   return ApiResponse<PageResult<Invite>>.Ok(new PageResult<Invite>
+  //   {
+  //     page = page,
+  //     size = size,
+  //     totalItems = total,
+  //     totalPages = (int)Math.Ceiling(total / (double)size),
+  //     hasNext = page * size < total,
+  //     hasPrev = page > 1,
+  //     items = items
+  //   });
+  // }
 
   [Authorize(Roles = "Company")]
   [HttpGet("{id}/invitations")]
   [SwaggerOperation(Summary = "List Invitations")]
   [ProducesResponseType(typeof(ApiResponse<PageResult<Invite>>), 200)]
-  public async Task<ActionResult<ApiResponse<PageResult<Invite>>>> ListInvitations([FromRoute] string id, [FromQuery] int page = 1, [FromQuery] int size = 10)
+  public async Task<ActionResult<ApiResponse<PageResult<Invite>>>> ListInvitations(
+    [FromRoute] string id,
+    [FromQuery] int page = 1,
+    [FromQuery] int size = 10,
+    [FromQuery] string? status = null)
   {
     var company = await GetOwnedCompanyAsync(id);
     if (company == null) return Forbidden<PageResult<Invite>>();
 
-    var q = _db.Invites.Where(i => i.CompanyId == id).OrderByDescending(i => i.CreatedAt);
+    var q = _db.Invites.Where(i => i.CompanyId == id);
+
+    // filter theo status nếu có
+    if (!string.IsNullOrWhiteSpace(status))
+    {
+      q = q.Where(i => i.Status == status);
+    }
+
+    q = q.OrderByDescending(i => i.CreatedAt);
+
     var total = await q.CountAsync();
     var items = await q.Skip((page - 1) * size).Take(size).ToListAsync();
+
     return ApiResponse<PageResult<Invite>>.Ok(new PageResult<Invite>
     {
       page = page,
