@@ -171,28 +171,99 @@ public class DriversController : ControllerBase
 
 
   // ========= Public listing & detail =========
+  // [HttpGet]
+  // [SwaggerOperation(Summary = "List Drivers")]
+  // [ProducesResponseType(typeof(ApiResponse<PageResult<DriverProfile>>), 200)]
+  // public async Task<ActionResult<ApiResponse<PageResult<DriverProfile>>>> ListDrivers(
+  //     [FromQuery] string? name = null,
+  //     [FromQuery] string? skills = null,
+  //     [FromQuery] string? location = null,
+  //     [FromQuery] bool? isAvailable = null,
+  //     [FromQuery] decimal? minRating = null,
+  //     [FromQuery] int page = 1, [FromQuery] int size = 10, [FromQuery] string? sort = "rating:desc")
+  // {
+  //   var q = _db.DriverProfiles.AsQueryable();
+  //   if (!string.IsNullOrWhiteSpace(name)) q = q.Where(d => d.FullName.Contains(name));
+  //   if (!string.IsNullOrWhiteSpace(skills))
+  //   {
+  //     var parts = skills.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+  //     foreach (var p in parts) q = q.Where(d => d.Skills != null && d.Skills.Contains(p));
+  //   }
+  //   if (!string.IsNullOrWhiteSpace(location)) q = q.Where(d => d.Location == location);
+  //   if (isAvailable.HasValue) q = q.Where(d => d.IsAvailable == isAvailable.Value);
+  //   if (minRating.HasValue) q = q.Where(d => d.Rating >= minRating.Value);
+
+  //   if (!string.IsNullOrWhiteSpace(sort))
+  //   {
+  //     var s = sort.Split(':'); var field = s[0]; var dir = s.Length > 1 ? s[1] : "asc";
+  //     q = (field, dir) switch
+  //     {
+  //       ("name", "asc") => q.OrderBy(d => d.FullName),
+  //       ("name", "desc") => q.OrderByDescending(d => d.FullName),
+  //       ("rating", "asc") => q.OrderBy(d => d.Rating),
+  //       ("rating", "desc") => q.OrderByDescending(d => d.Rating),
+  //       _ => q.OrderByDescending(d => d.Rating)
+  //     };
+  //   }
+
+  //   var total = await q.CountAsync();
+  //   var items = await q.Skip((page - 1) * size).Take(size).ToListAsync();
+  //   return ApiResponse<PageResult<DriverProfile>>.Ok(new PageResult<DriverProfile>
+  //   {
+  //     page = page,
+  //     size = size,
+  //     totalItems = total,
+  //     totalPages = (int)Math.Ceiling(total / (double)size),
+  //     hasNext = page * size < total,
+  //     hasPrev = page > 1,
+  //     items = items
+  //   });
+  // }
+
   [HttpGet]
   [SwaggerOperation(Summary = "List Drivers")]
-  [ProducesResponseType(typeof(ApiResponse<PageResult<DriverProfile>>), 200)]
-  public async Task<ActionResult<ApiResponse<PageResult<DriverProfile>>>> ListDrivers(
-      [FromQuery] string? name = null,
-      [FromQuery] string? skills = null,
-      [FromQuery] string? location = null,
-      [FromQuery] bool? isAvailable = null,
-      [FromQuery] decimal? minRating = null,
-      [FromQuery] int page = 1, [FromQuery] int size = 10, [FromQuery] string? sort = "rating:desc")
+  [ProducesResponseType(typeof(ApiResponse<PageResult<DriverForListDto>>), 200)]
+  public async Task<ActionResult<ApiResponse<PageResult<DriverForListDto>>>> ListDrivers(
+    [FromQuery] string? name = null,
+    [FromQuery] string? skills = null,
+    [FromQuery] string? location = null,
+    [FromQuery] bool? isAvailable = null,
+    [FromQuery] decimal? minRating = null,
+    // NEW: cho phép ẩn driver đã hired
+    [FromQuery] bool? excludeHired = null,
+    [FromQuery] int page = 1,
+    [FromQuery] int size = 10,
+    [FromQuery] string? sort = "rating:desc")
   {
     var q = _db.DriverProfiles.AsQueryable();
-    if (!string.IsNullOrWhiteSpace(name)) q = q.Where(d => d.FullName.Contains(name));
+
+    if (!string.IsNullOrWhiteSpace(name))
+      q = q.Where(d => d.FullName.Contains(name));
+
     if (!string.IsNullOrWhiteSpace(skills))
     {
       var parts = skills.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
-      foreach (var p in parts) q = q.Where(d => d.Skills != null && d.Skills.Contains(p));
+      foreach (var p in parts)
+        q = q.Where(d => d.Skills != null && d.Skills.Contains(p));
     }
-    if (!string.IsNullOrWhiteSpace(location)) q = q.Where(d => d.Location == location);
-    if (isAvailable.HasValue) q = q.Where(d => d.IsAvailable == isAvailable.Value);
-    if (minRating.HasValue) q = q.Where(d => d.Rating >= minRating.Value);
 
+    if (!string.IsNullOrWhiteSpace(location))
+      q = q.Where(d => d.Location == location);
+
+    if (isAvailable.HasValue)
+      q = q.Where(d => d.IsAvailable == isAvailable.Value);
+
+    if (minRating.HasValue)
+      q = q.Where(d => d.Rating >= minRating.Value);
+
+    // NEW: filter ẩn driver đã có quan hệ với bất kỳ company nào
+    if (excludeHired == true)
+    {
+      q = q.Where(d => !_db.CompanyDriverRelations
+                        .Any(r => r.DriverUserId == d.UserId));
+    }
+
+    // sort (giữ nguyên logic cũ)
     if (!string.IsNullOrWhiteSpace(sort))
     {
       var s = sort.Split(':'); var field = s[0]; var dir = s.Length > 1 ? s[1] : "asc";
@@ -207,8 +278,30 @@ public class DriversController : ControllerBase
     }
 
     var total = await q.CountAsync();
-    var items = await q.Skip((page - 1) * size).Take(size).ToListAsync();
-    return ApiResponse<PageResult<DriverProfile>>.Ok(new PageResult<DriverProfile>
+
+    // Project sang DTO và tính IsHired bằng subquery Any()
+    var items = await q
+      .Skip((page - 1) * size)
+      .Take(size)
+      .Select(d => new DriverForListDto
+      {
+        Id = d.Id,
+        UserId = d.UserId,
+        FullName = d.FullName,
+        Phone = d.Phone,
+        Bio = d.Bio,
+        ImgUrl = d.ImgUrl,
+        Rating = d.Rating,
+        Skills = d.Skills,
+        Location = d.Location,
+        IsAvailable = d.IsAvailable,
+        CreatedAt = d.CreatedAt,
+        UpdatedAt = d.UpdatedAt,
+        IsHired = _db.CompanyDriverRelations.Any(r => r.DriverUserId == d.UserId)
+      })
+      .ToListAsync();
+
+    return ApiResponse<PageResult<DriverForListDto>>.Ok(new PageResult<DriverForListDto>
     {
       page = page,
       size = size,
@@ -466,6 +559,9 @@ public class DriversController : ControllerBase
     var dup = await _db.JobApplications.AnyAsync(a => a.CompanyId == dto.CompanyId && a.DriverUserId == userId && a.Status == ApplyStatus.Applied);
     if (dup) return ApiResponse<JobApplication>.Fail("DUPLICATE", "Bạn đã ứng tuyển và đang chờ xử lý");
 
+    var alreadyHired = await _db.CompanyDriverRelations.AnyAsync(r => r.DriverUserId == userId);
+    if (alreadyHired) return ApiResponse<JobApplication>.Fail("ALREADY_EMPLOYED", "Bạn đã là tài xế của một công ty, không thể ứng tuyển nơi khác.");
+
     var app = new JobApplication
     {
       Id = NewId(),
@@ -479,6 +575,7 @@ public class DriversController : ControllerBase
     await _db.SaveChangesAsync();
     return ApiResponse<JobApplication>.Ok(app);
   }
+
 
   [Authorize(Roles = "Driver")]
   [HttpGet("{userId}/applications")]
@@ -576,34 +673,64 @@ public class DriversController : ControllerBase
   [HttpPost("{userId}/invitations/{inviteId}/accept")]
   [SwaggerOperation(Summary = "Accept Invitation")]
   [ProducesResponseType(typeof(ApiResponse<object>), 200)]
-  public async Task<ActionResult<ApiResponse<object>>> AcceptInvitation([FromRoute] string userId, [FromRoute] string inviteId)
+  public async Task<ActionResult<ApiResponse<object>>> AcceptInvitation(
+    [FromRoute] string userId,
+    [FromRoute] string inviteId)
   {
     var p = await GetOwnedDriverAsync(userId);
     if (p == null) return Forbidden<object>();
 
-    var inv = await _db.Invites.FirstOrDefaultAsync(i => i.Id == inviteId && i.DriverUserId == userId);
+    var inv = await _db.Invites
+      .FirstOrDefaultAsync(i => i.Id == inviteId && i.DriverUserId == userId);
     if (inv == null) return ApiResponse<object>.Fail("NOT_FOUND", "Invite không tồn tại");
-    if (inv.Status != "Pending") return ApiResponse<object>.Fail("INVALID_STATE", "Invite đã được xử lý");
 
-    inv.Status = "Accepted";
+    // giữ nguyên logic: chỉ xử lý khi Pending
+    if (!string.Equals(inv.Status, "Pending", StringComparison.OrdinalIgnoreCase))
+      return ApiResponse<object>.Fail("INVALID_STATE", "Invite đã được xử lý");
 
-    var exists = await _db.CompanyDriverRelations.AnyAsync(r => r.CompanyId == inv.CompanyId && r.DriverUserId == userId);
-    if (!exists)
+    // Transaction để mọi thay đổi đi cùng nhau
+    await using var tx = await _db.Database.BeginTransactionAsync();
+    try
     {
-      _db.CompanyDriverRelations.Add(new CompanyDriverRelation
-      {
-        Id = NewId(),
-        CompanyId = inv.CompanyId,
-        DriverUserId = userId,
-        BaseSalaryCents = inv.BaseSalaryCents,
-        CreatedAt = DateTime.UtcNow,
-        UpdatedAt = DateTime.UtcNow
-      });
-    }
+      // 1) Accept lời mời
+      inv.Status = "Accepted";
 
-    await _db.SaveChangesAsync();
-    return ApiResponse<object>.Ok(new { inviteId = inv.Id, status = inv.Status });
+      // 2) Nếu chưa có quan hệ company-driver thì tạo
+      var exists = await _db.CompanyDriverRelations.AnyAsync(
+        r => r.CompanyId == inv.CompanyId && r.DriverUserId == userId);
+      if (!exists)
+      {
+        _db.CompanyDriverRelations.Add(new CompanyDriverRelation
+        {
+          Id = NewId(),
+          CompanyId = inv.CompanyId,
+          DriverUserId = userId,
+          BaseSalaryCents = inv.BaseSalaryCents,
+          CreatedAt = DateTime.UtcNow,
+          UpdatedAt = DateTime.UtcNow
+        });
+      }
+
+      // 3) HỦY TẤT CẢ JobApplication đang Applied của driver này (mọi công ty)
+      var toCancel = await _db.JobApplications
+        .Where(a => a.DriverUserId == userId && a.Status == ApplyStatus.Applied)
+        .ToListAsync();
+
+      foreach (var a in toCancel)
+        a.Status = ApplyStatus.Cancelled;
+
+      await _db.SaveChangesAsync();
+      await tx.CommitAsync();
+
+      return ApiResponse<object>.Ok(new { inviteId = inv.Id, status = inv.Status });
+    }
+    catch
+    {
+      await tx.RollbackAsync();
+      throw;
+    }
   }
+
 
   [Authorize(Roles = "Driver")]
   [HttpPost("{userId}/invitations/{inviteId}/reject")]
@@ -621,5 +748,25 @@ public class DriversController : ControllerBase
     inv.Status = "Rejected";
     await _db.SaveChangesAsync();
     return ApiResponse<object>.Ok(new { inviteId = inv.Id, status = inv.Status });
+  }
+
+
+  // ========= check employment status =========
+  [Authorize(Roles = "Driver")]
+  [HttpGet("{userId}/employment")]
+  [SwaggerOperation(Summary = "Employment status of driver")]
+  [ProducesResponseType(typeof(ApiResponse<object>), 200)]
+  public async Task<ActionResult<ApiResponse<object>>> GetEmploymentStatus([FromRoute] string userId)
+  {
+    var me = await GetOwnedDriverAsync(userId);
+    if (me == null) return Forbidden<object>();
+
+    var relation = await _db.CompanyDriverRelations.FirstOrDefaultAsync(r => r.DriverUserId == userId);
+
+    return ApiResponse<object>.Ok(new
+    {
+      isHired = relation != null,
+      companyId = relation?.CompanyId
+    });
   }
 }
