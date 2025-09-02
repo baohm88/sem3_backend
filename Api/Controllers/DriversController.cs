@@ -543,12 +543,21 @@ public class DriversController : ControllerBase
   [SwaggerOperation(Summary = "List My Invitations")]
   [ProducesResponseType(typeof(ApiResponse<PageResult<Invite>>), 200)]
   public async Task<ActionResult<ApiResponse<PageResult<Invite>>>> ListMyInvitations(
-      [FromRoute] string userId, [FromQuery] int page = 1, [FromQuery] int size = 10)
+      [FromRoute] string userId, [FromQuery] int page = 1, [FromQuery] int size = 10, [FromQuery] string? status = null)
   {
     var p = await GetOwnedDriverAsync(userId);
     if (p == null) return Forbidden<PageResult<Invite>>();
 
-    var q = _db.Invites.Where(i => i.DriverUserId == userId).OrderByDescending(i => i.CreatedAt);
+
+    var q = _db.Invites.Where(i => i.DriverUserId == userId);
+
+    if (!string.IsNullOrWhiteSpace(status))
+    {
+      q = q.Where(i => i.Status == status);
+    }
+
+    q = q.OrderByDescending(i => i.CreatedAt);
+
     var total = await q.CountAsync();
     var items = await q.Skip((page - 1) * size).Take(size).ToListAsync();
     return ApiResponse<PageResult<Invite>>.Ok(new PageResult<Invite>
@@ -574,7 +583,7 @@ public class DriversController : ControllerBase
 
     var inv = await _db.Invites.FirstOrDefaultAsync(i => i.Id == inviteId && i.DriverUserId == userId);
     if (inv == null) return ApiResponse<object>.Fail("NOT_FOUND", "Invite không tồn tại");
-    if (inv.Status != "Sent") return ApiResponse<object>.Fail("INVALID_STATE", "Invite đã được xử lý");
+    if (inv.Status != "Pending") return ApiResponse<object>.Fail("INVALID_STATE", "Invite đã được xử lý");
 
     inv.Status = "Accepted";
 
@@ -607,7 +616,7 @@ public class DriversController : ControllerBase
 
     var inv = await _db.Invites.FirstOrDefaultAsync(i => i.Id == inviteId && i.DriverUserId == userId);
     if (inv == null) return ApiResponse<object>.Fail("NOT_FOUND", "Invite không tồn tại");
-    if (inv.Status != "Sent") return ApiResponse<object>.Fail("INVALID_STATE", "Invite đã được xử lý");
+    if (inv.Status != "Pending") return ApiResponse<object>.Fail("INVALID_STATE", "Invite đã được xử lý");
 
     inv.Status = "Rejected";
     await _db.SaveChangesAsync();

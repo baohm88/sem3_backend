@@ -116,7 +116,7 @@ public class Invite
   public string CompanyId { get; set; } = default!;
   public string DriverUserId { get; set; } = default!;
   public int BaseSalaryCents { get; set; }
-  public string Status { get; set; } = "Sent";
+  public string Status { get; set; } = "Pending";
   public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
   public DateTime? ExpiresAt { get; set; }
 }

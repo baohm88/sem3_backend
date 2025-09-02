@@ -880,8 +880,8 @@ public class CompaniesController : ControllerBase
 
     if (latest != null)
     {
-      // Nếu đang Sent & chưa hết hạn => idempotent: trả lại invite cũ
-      if (latest.Status == "Sent")
+      // Nếu đang Pending & chưa hết hạn => idempotent: trả lại invite cũ
+      if (latest.Status == "Pending")
       {
         var isExpired = latest.ExpiresAt.HasValue && latest.ExpiresAt.Value <= now;
         if (!isExpired)
@@ -912,7 +912,7 @@ public class CompaniesController : ControllerBase
       CompanyId = id,
       DriverUserId = dto.DriverUserId!,
       BaseSalaryCents = dto.BaseSalaryCents,
-      Status = "Sent",
+      Status = "Pending",
       CreatedAt = now,
       ExpiresAt = dto.ExpiresAt
     };
@@ -941,9 +941,9 @@ public class CompaniesController : ControllerBase
     var inv = await _db.Invites.FirstOrDefaultAsync(i => i.Id == inviteId && i.CompanyId == id);
     if (inv == null) return ApiResponse<object>.Fail("NOT_FOUND", "Invite không tồn tại");
 
-    // Chỉ cho phép thu hồi khi đang ở trạng thái Sent
-    if (!string.Equals(inv.Status, "Sent", StringComparison.OrdinalIgnoreCase))
-      return ApiResponse<object>.Fail("INVALID_STATE", "Chỉ thu hồi được khi invite đang ở trạng thái Sent");
+    // Chỉ cho phép thu hồi khi đang ở trạng thái pending
+    if (!string.Equals(inv.Status, "Pending", StringComparison.OrdinalIgnoreCase))
+      return ApiResponse<object>.Fail("INVALID_STATE", "Chỉ thu hồi được khi invite đang ở trạng thái Pending");
 
     inv.Status = "Cancelled";
     await _db.SaveChangesAsync();
