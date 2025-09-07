@@ -4,14 +4,17 @@ namespace Api.Contracts.Companies;
 
 public class PaySalaryDto
 {
-    /// <example>68a000000000000000000005</example>
-    [Required]
-    public string DriverUserId { get; set; } = default!;
+  /// <example>68a000000000000000000005</example>
+  [Required]
+  public string DriverUserId { get; set; } = default!;
 
-    /// <example>150000</example>
-    [Range(1, int.MaxValue)]
-    public int AmountCents { get; set; }
+  /// <example>150000</example>
+  [Range(1, int.MaxValue)]
+  public int AmountCents { get; set; }
 
-    /// <example>salary-2025-08-30-01</example>
-    public string? IdempotencyKey { get; set; }
+  /// <example>salary-2025-08-30-01</example>
+  public string? IdempotencyKey { get; set; }
+  // "YYYY-MM" (tuỳ chọn, mặc định = tháng hiện tại UTC)
+  public string? Period { get; set; }
+  public string? Note { get; set; }
 }

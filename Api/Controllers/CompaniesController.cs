@@ -217,48 +217,6 @@ public class CompaniesController : ControllerBase
   }
 
   // ========= List Company Drivers =========
-  // [HttpGet("{id}/drivers")]
-  // [SwaggerOperation(Summary = "List Company Drivers")]
-  // [ProducesResponseType(typeof(ApiResponse<PageResult<CompanyDriverDto>>), 200)]
-  // public async Task<ActionResult<ApiResponse<PageResult<CompanyDriverDto>>>> ListCompanyDrivers(
-  //     [FromRoute] string id, [FromQuery] int page = 1, [FromQuery] int size = 10,
-  //     [FromQuery] string? name = null, [FromQuery] decimal? minRating = null)
-  // {
-  //   var q = from rel in _db.CompanyDriverRelations
-  //           where rel.CompanyId == id
-  //           join d in _db.DriverProfiles on rel.DriverUserId equals d.UserId into dd
-  //           from d in dd.DefaultIfEmpty()
-  //           select new CompanyDriverDto
-  //           {
-  //             RelationId = rel.Id,
-  //             DriverUserId = rel.DriverUserId,
-  //             FullName = d != null ? d.FullName : null,
-  //             Phone = d != null ? d.Phone : null,
-  //             ImgUrl = d != null ? d.ImgUrl : null,
-  //             Rating = d != null ? d.Rating : 0,
-  //             BaseSalaryCents = rel.BaseSalaryCents
-  //           };
-
-  //   if (!string.IsNullOrWhiteSpace(name))
-  //     q = q.Where(x => x.FullName != null && x.FullName.Contains(name));
-  //   if (minRating.HasValue)
-  //     q = q.Where(x => x.Rating >= minRating.Value);
-
-  //   var total = await q.CountAsync();
-  //   var items = await q.Skip((page - 1) * size).Take(size).ToListAsync();
-
-  //   return ApiResponse<PageResult<CompanyDriverDto>>.Ok(new PageResult<CompanyDriverDto>
-  //   {
-  //     page = page,
-  //     size = size,
-  //     totalItems = total,
-  //     totalPages = (int)Math.Ceiling(total / (double)size),
-  //     hasNext = page * size < total,
-  //     hasPrev = page > 1,
-  //     items = items
-  //   });
-  // }
-
   [Authorize(Roles = "Company")]
   [HttpGet("{companyId}/drivers")]
   [SwaggerOperation(Summary = "List drivers employed by this company")]
@@ -812,19 +770,86 @@ public class CompaniesController : ControllerBase
 
 
   // ========= Pay Salary =========
+  // [Authorize(Roles = "Company")]
+  // [HttpPost("{id}/pay-salary")]
+  // [SwaggerOperation(Summary = "Pay Driver Salary")]
+  // [ProducesResponseType(typeof(ApiResponse<object>), 200)]
+  // public async Task<ActionResult<ApiResponse<object>>> PaySalary([FromRoute] string id, [FromBody] PaySalaryDto dto)
+  // {
+  //   var company = await GetOwnedCompanyAsync(id);
+  //   if (company == null) return Forbidden<object>();
+  //   if (dto.AmountCents <= 0) return ApiResponse<object>.Fail("VALIDATION", "AmountCents phải > 0");
+
+  //   var companyWallet = await _db.Wallets.FirstOrDefaultAsync(w => w.OwnerType == "Company" && w.OwnerRefId == id);
+  //   if (companyWallet == null) return ApiResponse<object>.Fail("NO_WALLET", "Company chưa có ví");
+  //   if (companyWallet.BalanceCents < dto.AmountCents) return ApiResponse<object>.Fail("INSUFFICIENT_FUNDS", "Số dư không đủ");
+
+  //   var driverWallet = await _db.Wallets.FirstOrDefaultAsync(w => w.OwnerType == "Driver" && w.OwnerRefId == dto.DriverUserId);
+  //   if (driverWallet == null)
+  //   {
+  //     driverWallet = new Wallet
+  //     {
+  //       Id = NewId(),
+  //       OwnerType = "Driver",
+  //       OwnerRefId = dto.DriverUserId,
+  //       BalanceCents = 0,
+  //       LowBalanceThreshold = 10000,
+  //       UpdatedAt = DateTime.UtcNow
+  //     };
+  //     _db.Wallets.Add(driverWallet);
+  //   }
+
+  //   companyWallet.BalanceCents -= dto.AmountCents;
+  //   companyWallet.UpdatedAt = DateTime.UtcNow;
+  //   driverWallet.BalanceCents += dto.AmountCents;
+  //   driverWallet.UpdatedAt = DateTime.UtcNow;
+
+  //   var tx = new Transaction
+  //   {
+  //     Id = NewId(),
+  //     FromWalletId = companyWallet.Id,
+  //     ToWalletId = driverWallet.Id,
+  //     AmountCents = dto.AmountCents,
+  //     Status = TxStatus.Completed,
+  //     IdempotencyKey = dto.IdempotencyKey,
+  //     CreatedAt = DateTime.UtcNow,
+  //     Type = TxType.PaySalary,
+  //     RefId = dto.DriverUserId,
+  //     MetaJson = JsonSerializer.Serialize(new { companyId = company.Id, driverUserId = dto.DriverUserId })
+  //   };
+  //   _db.Transactions.Add(tx);
+
+  //   await _db.SaveChangesAsync();
+  //   return ApiResponse<object>.Ok(new
+  //   {
+  //     transactionId = tx.Id,
+  //     companyBalance = companyWallet.BalanceCents,
+  //     driverBalance = driverWallet.BalanceCents
+  //   });
+  // }
+
   [Authorize(Roles = "Company")]
   [HttpPost("{id}/pay-salary")]
   [SwaggerOperation(Summary = "Pay Driver Salary")]
   [ProducesResponseType(typeof(ApiResponse<object>), 200)]
-  public async Task<ActionResult<ApiResponse<object>>> PaySalary([FromRoute] string id, [FromBody] PaySalaryDto dto)
+  public async Task<ActionResult<ApiResponse<object>>> PaySalary(
+  [FromRoute] string id, [FromBody] PaySalaryDto dto)
   {
     var company = await GetOwnedCompanyAsync(id);
     if (company == null) return Forbidden<object>();
     if (dto.AmountCents <= 0) return ApiResponse<object>.Fail("VALIDATION", "AmountCents phải > 0");
 
+    // Kiểm tra quan hệ employment
+    var employed = await _db.CompanyDriverRelations
+      .AnyAsync(r => r.CompanyId == id && r.DriverUserId == dto.DriverUserId);
+    if (!employed) return ApiResponse<object>.Fail("NOT_EMPLOYED", "Driver chưa/không làm việc cho công ty.");
+
+    var period = !string.IsNullOrWhiteSpace(dto.Period)
+      ? dto.Period!.Trim()
+      : DateTime.UtcNow.ToString("yyyy-MM");
+
     var companyWallet = await _db.Wallets.FirstOrDefaultAsync(w => w.OwnerType == "Company" && w.OwnerRefId == id);
     if (companyWallet == null) return ApiResponse<object>.Fail("NO_WALLET", "Company chưa có ví");
-    if (companyWallet.BalanceCents < dto.AmountCents) return ApiResponse<object>.Fail("INSUFFICIENT_FUNDS", "Số dư không đủ");
 
     var driverWallet = await _db.Wallets.FirstOrDefaultAsync(w => w.OwnerType == "Driver" && w.OwnerRefId == dto.DriverUserId);
     if (driverWallet == null)
@@ -839,36 +864,70 @@ public class CompaniesController : ControllerBase
         UpdatedAt = DateTime.UtcNow
       };
       _db.Wallets.Add(driverWallet);
+      await _db.SaveChangesAsync();
     }
 
-    companyWallet.BalanceCents -= dto.AmountCents;
-    companyWallet.UpdatedAt = DateTime.UtcNow;
-    driverWallet.BalanceCents += dto.AmountCents;
-    driverWallet.UpdatedAt = DateTime.UtcNow;
+    if (companyWallet.BalanceCents < dto.AmountCents)
+      return ApiResponse<object>.Fail("INSUFFICIENT_FUNDS", "Số dư không đủ");
 
-    var tx = new Transaction
-    {
-      Id = NewId(),
-      FromWalletId = companyWallet.Id,
-      ToWalletId = driverWallet.Id,
-      AmountCents = dto.AmountCents,
-      Status = TxStatus.Completed,
-      IdempotencyKey = dto.IdempotencyKey,
-      CreatedAt = DateTime.UtcNow,
-      Type = TxType.PaySalary,
-      RefId = dto.DriverUserId,
-      MetaJson = JsonSerializer.Serialize(new { companyId = company.Id, driverUserId = dto.DriverUserId })
-    };
-    _db.Transactions.Add(tx);
+    // Chuẩn hoá idempotency key
+    var idem = string.IsNullOrWhiteSpace(dto.IdempotencyKey)
+      ? $"salary:{id}:{dto.DriverUserId}:{period}:{dto.AmountCents}"
+      : dto.IdempotencyKey!.Trim();
 
-    await _db.SaveChangesAsync();
-    return ApiResponse<object>.Ok(new
+    // Idempotency check
+    var existed = await _db.Transactions.AnyAsync(t =>
+      t.Type == TxType.PaySalary && t.IdempotencyKey == idem && t.Status == TxStatus.Completed);
+    if (existed)
+      return ApiResponse<object>.Ok(new { reused = true });
+
+    using var txScope = await _db.Database.BeginTransactionAsync();
+    try
     {
-      transactionId = tx.Id,
-      companyBalance = companyWallet.BalanceCents,
-      driverBalance = driverWallet.BalanceCents
-    });
+      companyWallet.BalanceCents -= dto.AmountCents;
+      companyWallet.UpdatedAt = DateTime.UtcNow;
+      driverWallet.BalanceCents += dto.AmountCents;
+      driverWallet.UpdatedAt = DateTime.UtcNow;
+
+      var meta = new
+      {
+        companyId = company.Id,
+        driverUserId = dto.DriverUserId,
+        period,
+        note = dto.Note
+      };
+
+      _db.Transactions.Add(new Transaction
+      {
+        Id = NewId(),
+        FromWalletId = companyWallet.Id,
+        ToWalletId = driverWallet.Id,
+        AmountCents = dto.AmountCents,
+        Status = TxStatus.Completed,
+        IdempotencyKey = idem,
+        CreatedAt = DateTime.UtcNow,
+        Type = TxType.PaySalary,
+        RefId = dto.DriverUserId,   // giữ nguyên cách bạn đang dùng
+        MetaJson = JsonSerializer.Serialize(meta)
+      });
+
+      await _db.SaveChangesAsync();
+      await txScope.CommitAsync();
+
+      return ApiResponse<object>.Ok(new
+      {
+        companyBalance = companyWallet.BalanceCents,
+        driverBalance = driverWallet.BalanceCents,
+        period
+      });
+    }
+    catch
+    {
+      await txScope.RollbackAsync();
+      return ApiResponse<object>.Fail("INTERNAL_ERROR", "Payout failed");
+    }
   }
+
 
   // ========= Pay Membership =========
   [Authorize(Roles = "Company")]
