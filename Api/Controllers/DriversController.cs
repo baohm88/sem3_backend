@@ -171,55 +171,6 @@ public class DriversController : ControllerBase
 
 
   // ========= Public listing & detail =========
-  // [HttpGet]
-  // [SwaggerOperation(Summary = "List Drivers")]
-  // [ProducesResponseType(typeof(ApiResponse<PageResult<DriverProfile>>), 200)]
-  // public async Task<ActionResult<ApiResponse<PageResult<DriverProfile>>>> ListDrivers(
-  //     [FromQuery] string? name = null,
-  //     [FromQuery] string? skills = null,
-  //     [FromQuery] string? location = null,
-  //     [FromQuery] bool? isAvailable = null,
-  //     [FromQuery] decimal? minRating = null,
-  //     [FromQuery] int page = 1, [FromQuery] int size = 10, [FromQuery] string? sort = "rating:desc")
-  // {
-  //   var q = _db.DriverProfiles.AsQueryable();
-  //   if (!string.IsNullOrWhiteSpace(name)) q = q.Where(d => d.FullName.Contains(name));
-  //   if (!string.IsNullOrWhiteSpace(skills))
-  //   {
-  //     var parts = skills.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
-  //     foreach (var p in parts) q = q.Where(d => d.Skills != null && d.Skills.Contains(p));
-  //   }
-  //   if (!string.IsNullOrWhiteSpace(location)) q = q.Where(d => d.Location == location);
-  //   if (isAvailable.HasValue) q = q.Where(d => d.IsAvailable == isAvailable.Value);
-  //   if (minRating.HasValue) q = q.Where(d => d.Rating >= minRating.Value);
-
-  //   if (!string.IsNullOrWhiteSpace(sort))
-  //   {
-  //     var s = sort.Split(':'); var field = s[0]; var dir = s.Length > 1 ? s[1] : "asc";
-  //     q = (field, dir) switch
-  //     {
-  //       ("name", "asc") => q.OrderBy(d => d.FullName),
-  //       ("name", "desc") => q.OrderByDescending(d => d.FullName),
-  //       ("rating", "asc") => q.OrderBy(d => d.Rating),
-  //       ("rating", "desc") => q.OrderByDescending(d => d.Rating),
-  //       _ => q.OrderByDescending(d => d.Rating)
-  //     };
-  //   }
-
-  //   var total = await q.CountAsync();
-  //   var items = await q.Skip((page - 1) * size).Take(size).ToListAsync();
-  //   return ApiResponse<PageResult<DriverProfile>>.Ok(new PageResult<DriverProfile>
-  //   {
-  //     page = page,
-  //     size = size,
-  //     totalItems = total,
-  //     totalPages = (int)Math.Ceiling(total / (double)size),
-  //     hasNext = page * size < total,
-  //     hasPrev = page > 1,
-  //     items = items
-  //   });
-  // }
-
   [HttpGet]
   [SwaggerOperation(Summary = "List Drivers")]
   [ProducesResponseType(typeof(ApiResponse<PageResult<DriverForListDto>>), 200)]
@@ -768,5 +719,68 @@ public class DriversController : ControllerBase
       isHired = relation != null,
       companyId = relation?.CompanyId
     });
+  }
+
+
+  // PUBLIC API
+  [AllowAnonymous]
+  [HttpGet("{userId}/public")]
+  [SwaggerOperation(Summary = "Get Driver Public Profile")]
+  [ProducesResponseType(typeof(ApiResponse<DriverPublicProfileDto>), 200)]
+  public async Task<ActionResult<ApiResponse<DriverPublicProfileDto>>> GetDriverPublicProfile([FromRoute] string userId)
+  {
+    // 1) Hồ sơ tài xế
+    var driver = await _db.DriverProfiles.FirstOrDefaultAsync(d => d.UserId == userId);
+    if (driver == null)
+      return ApiResponse<DriverPublicProfileDto>.Fail("NOT_FOUND", "Driver không tồn tại");
+
+    // 2) Công ty hiện đang thuê: lấy relation mới nhất
+    var latestRel = await _db.CompanyDriverRelations
+      .Where(r => r.DriverUserId == userId)
+      .OrderByDescending(r => r.CreatedAt)
+      .FirstOrDefaultAsync();
+
+    CompanyBriefDto? hired = null;
+    if (latestRel != null)
+    {
+      var comp = await _db.Companies.FirstOrDefaultAsync(c => c.Id == latestRel.CompanyId);
+      if (comp != null)
+      {
+        hired = new CompanyBriefDto
+        {
+          Id = comp.Id,
+          Name = comp.Name,
+          ImgUrl = comp.ImgUrl,
+          Membership = comp.Membership,
+          Rating = comp.Rating
+        };
+      }
+    }
+
+    // 3) Lịch sử làm việc (đơn giản: toàn bộ relations)
+    var history = await (from rel in _db.CompanyDriverRelations
+                         join c in _db.Companies on rel.CompanyId equals c.Id
+                         where rel.DriverUserId == userId
+                         orderby rel.CreatedAt descending
+                         select new EmploymentDto
+                         {
+                           CompanyId = c.Id,
+                           CompanyName = c.Name,
+                           CompanyImgUrl = c.ImgUrl,
+                           Since = rel.CreatedAt,
+                           BaseSalaryCents = rel.BaseSalaryCents
+                         }).ToListAsync();
+
+    // 4) Rating & Reviews: chưa có nguồn liên kết driver -> order/review => để trống
+    var dto = new DriverPublicProfileDto
+    {
+      Driver = driver,
+      HiredCompany = hired,
+      EmploymentHistory = history,
+      Rating = 0,
+      Reviews = new List<ReviewDto>()
+    };
+
+    return ApiResponse<DriverPublicProfileDto>.Ok(dto);
   }
 }

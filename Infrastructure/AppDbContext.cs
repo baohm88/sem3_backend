@@ -97,6 +97,7 @@ public class AppDbContext : DbContext
       e.Property(x => x.CompanyId).HasColumnName("company_id");
       e.Property(x => x.Title).HasColumnName("title");
       e.Property(x => x.Description).HasColumnName("description");
+      e.Property(x => x.ImgUrl).HasColumnName("img_url");
       e.Property(x => x.PriceCents).HasColumnName("price_cents");
       e.Property(x => x.IsActive).HasColumnName("is_active");
       e.Property(x => x.CreatedAt).HasColumnName("created_at");

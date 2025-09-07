@@ -73,6 +73,7 @@ public class Service
   public string CompanyId { get; set; } = default!;
   public string Title { get; set; } = default!;
   public string? Description { get; set; }
+  public string? ImgUrl { get; set; }
   public int PriceCents { get; set; }
   public bool IsActive { get; set; } = true;
   public DateTime CreatedAt { get; set; } = DateTime.UtcNow;   // bổ sung

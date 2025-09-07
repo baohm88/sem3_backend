@@ -7,6 +7,8 @@ public class AddServiceDto
     /// <example>Bike Ride</example>
     [Required, StringLength(200)]
     public string? Title { get; set; }
+    [Url]
+    public string? ImgUrl { get; set; }
 
     /// <example>Short-distance city ride</example>
     public string? Description { get; set; }

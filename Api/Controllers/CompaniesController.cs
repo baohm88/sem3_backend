@@ -261,38 +261,94 @@ public class CompaniesController : ControllerBase
 
   // ========= SERVICES =========
   // CREATE
+  // [Authorize(Roles = "Company")]
+  // [HttpPost("{companyId}/services")]
+  // [SwaggerOperation(Summary = "Create Company Service")]
+  // [ProducesResponseType(typeof(ApiResponse<Service>), 200)]
+  // public async Task<ActionResult<ApiResponse<Service>>> CreateService(
+  //     [FromRoute] string companyId,
+  //     [FromBody] AddServiceDto dto)
+  // {
+  //   var company = await GetOwnedCompanyAsync(companyId);
+  //   if (company == null) return Forbidden<Service>();
+
+  //   if (string.IsNullOrWhiteSpace(dto.Title))
+  //     return ApiResponse<Service>.Fail("VALIDATION", "Title bắt buộc");
+  //   if (dto.PriceCents <= 0)
+  //     return ApiResponse<Service>.Fail("VALIDATION", "PriceCents phải > 0");
+
+  //   if (!string.IsNullOrWhiteSpace(dto.ImgUrl))
+  //   {
+  //     var normalized = UrlHelper.TryNormalizeUrl(dto.ImgUrl);
+  //     if (normalized == null)
+  //       return ApiResponse<Service>.Fail("IMG_URL_INVALID", "ImgUrl không hợp lệ (http/https).");
+  //     svc.ImgUrl = normalized;
+  //   }
+
+
+  //   var svc = new Service
+  //   {
+  //     Id = NewId(),
+  //     CompanyId = company.Id,
+  //     Title = dto.Title!,
+  //     Description = dto.Description,
+  //     PriceCents = dto.PriceCents,
+  //     IsActive = dto.IsActive ?? true,
+  //     CreatedAt = DateTime.UtcNow,
+  //     UpdatedAt = DateTime.UtcNow
+  //   };
+
+  //   _db.Services.Add(svc);
+  //   await _db.SaveChangesAsync();
+  //   return ApiResponse<Service>.Ok(svc);
+  // }
+
   [Authorize(Roles = "Company")]
   [HttpPost("{companyId}/services")]
   [SwaggerOperation(Summary = "Create Company Service")]
   [ProducesResponseType(typeof(ApiResponse<Service>), 200)]
   public async Task<ActionResult<ApiResponse<Service>>> CreateService(
-      [FromRoute] string companyId,
-      [FromBody] AddServiceDto dto)
+    [FromRoute] string companyId,
+    [FromBody] AddServiceDto dto)
   {
     var company = await GetOwnedCompanyAsync(companyId);
     if (company == null) return Forbidden<Service>();
 
+    // Validate
     if (string.IsNullOrWhiteSpace(dto.Title))
       return ApiResponse<Service>.Fail("VALIDATION", "Title bắt buộc");
     if (dto.PriceCents <= 0)
       return ApiResponse<Service>.Fail("VALIDATION", "PriceCents phải > 0");
 
+    // Normalize ImgUrl (nếu có)
+    string? normalizedImgUrl = null;
+    if (!string.IsNullOrWhiteSpace(dto.ImgUrl))
+    {
+      normalizedImgUrl = UrlHelper.TryNormalizeUrl(dto.ImgUrl);
+      if (normalizedImgUrl == null)
+        return ApiResponse<Service>.Fail("IMG_URL_INVALID", "ImgUrl không hợp lệ (http/https).");
+    }
+
+    var now = DateTime.UtcNow;
+
     var svc = new Service
     {
       Id = NewId(),
       CompanyId = company.Id,
-      Title = dto.Title!,
+      Title = dto.Title!.Trim(),
       Description = dto.Description,
+      ImgUrl = normalizedImgUrl,               // <-- gán tại đây
       PriceCents = dto.PriceCents,
       IsActive = dto.IsActive ?? true,
-      CreatedAt = DateTime.UtcNow,
-      UpdatedAt = DateTime.UtcNow
+      CreatedAt = now,
+      UpdatedAt = now
     };
 
     _db.Services.Add(svc);
     await _db.SaveChangesAsync();
     return ApiResponse<Service>.Ok(svc);
   }
+
 
   // LIST (của chính company hiện tại)
   [Authorize(Roles = "Company")]
@@ -410,21 +466,80 @@ public class CompaniesController : ControllerBase
   }
 
   // UPDATE
+  // [Authorize(Roles = "Company")]
+  // [HttpPut("{companyId}/services/{serviceId}")]
+  // [Consumes("application/json")]
+  // [SwaggerOperation(Summary = "Update Service")]
+  // [ProducesResponseType(typeof(ApiResponse<Service>), 200)]
+  // public async Task<ActionResult<ApiResponse<Service>>> UpdateService(
+  //     [FromRoute] string companyId,
+  //     [FromRoute] string serviceId,
+  //     [FromBody] UpdateServiceDto dto)
+  // {
+  //   var svc = await GetOwnedServiceAsync(companyId, serviceId);
+  //   if (svc == null) return Forbidden<Service>();
+
+  //   if (dto.Title is not null) svc.Title = dto.Title;
+  //   if (dto.Description is not null) svc.Description = dto.Description;
+
+  //   if (dto.ImgUrl is not null)
+  //   {
+  //     if (string.IsNullOrWhiteSpace(dto.ImgUrl)) svc.ImgUrl = null; // cho phép xoá ảnh
+  //     else
+  //     {
+  //       var normalized = UrlHelper.TryNormalizeUrl(dto.ImgUrl);
+  //       if (normalized == null)
+  //         return ApiResponse<Service>.Fail("IMG_URL_INVALID", "ImgUrl không hợp lệ (http/https).");
+  //       svc.ImgUrl = normalized;
+  //     }
+  //   }
+
+  //   if (dto.PriceCents.HasValue)
+  //   {
+  //     if (dto.PriceCents.Value <= 0)
+  //       return ApiResponse<Service>.Fail("VALIDATION", "PriceCents phải > 0");
+  //     svc.PriceCents = dto.PriceCents.Value;
+  //   }
+
+  //   if (dto.IsActive.HasValue) svc.IsActive = dto.IsActive.Value;
+
+  //   svc.UpdatedAt = DateTime.UtcNow;
+  //   await _db.SaveChangesAsync();
+  //   return ApiResponse<Service>.Ok(svc);
+  // }
+
   [Authorize(Roles = "Company")]
   [HttpPut("{companyId}/services/{serviceId}")]
   [Consumes("application/json")]
   [SwaggerOperation(Summary = "Update Service")]
   [ProducesResponseType(typeof(ApiResponse<Service>), 200)]
   public async Task<ActionResult<ApiResponse<Service>>> UpdateService(
-      [FromRoute] string companyId,
-      [FromRoute] string serviceId,
-      [FromBody] UpdateServiceDto dto)
+    [FromRoute] string companyId,
+    [FromRoute] string serviceId,
+    [FromBody] UpdateServiceDto dto)
   {
     var svc = await GetOwnedServiceAsync(companyId, serviceId);
     if (svc == null) return Forbidden<Service>();
 
     if (dto.Title is not null) svc.Title = dto.Title;
     if (dto.Description is not null) svc.Description = dto.Description;
+
+    // NEW: ImgUrl — cho phép xóa ("" => null) hoặc set mới (cần là http/https hợp lệ)
+    if (dto.ImgUrl is not null)
+    {
+      if (string.IsNullOrWhiteSpace(dto.ImgUrl))
+      {
+        // xóa ảnh
+        svc.ImgUrl = null;
+      }
+      else
+      {
+        var normalized = UrlHelper.TryNormalizeUrl(dto.ImgUrl);
+        if (normalized == null)
+          return ApiResponse<Service>.Fail("IMG_URL_INVALID", "ImgUrl không hợp lệ (http/https).");
+        svc.ImgUrl = normalized;
+      }
+    }
 
     if (dto.PriceCents.HasValue)
     {
@@ -439,6 +554,7 @@ public class CompaniesController : ControllerBase
     await _db.SaveChangesAsync();
     return ApiResponse<Service>.Ok(svc);
   }
+
 
   // PAUSE
   [Authorize(Roles = "Company")]
@@ -952,30 +1068,6 @@ public class CompaniesController : ControllerBase
   }
 
 
-  // [Authorize(Roles = "Company")]
-  // [HttpGet("{id}/invitations")]
-  // [SwaggerOperation(Summary = "List Invitations")]
-  // [ProducesResponseType(typeof(ApiResponse<PageResult<Invite>>), 200)]
-  // public async Task<ActionResult<ApiResponse<PageResult<Invite>>>> ListInvitations([FromRoute] string id, [FromQuery] int page = 1, [FromQuery] int size = 10, [FromQuery] string? status = null)
-  // {
-  //   var company = await GetOwnedCompanyAsync(id);
-  //   if (company == null) return Forbidden<PageResult<Invite>>();
-
-  //   var q = _db.Invites.Where(i => i.CompanyId == id).OrderByDescending(i => i.CreatedAt);
-  //   var total = await q.CountAsync();
-  //   var items = await q.Skip((page - 1) * size).Take(size).ToListAsync();
-  //   return ApiResponse<PageResult<Invite>>.Ok(new PageResult<Invite>
-  //   {
-  //     page = page,
-  //     size = size,
-  //     totalItems = total,
-  //     totalPages = (int)Math.Ceiling(total / (double)size),
-  //     hasNext = page * size < total,
-  //     hasPrev = page > 1,
-  //     items = items
-  //   });
-  // }
-
   [Authorize(Roles = "Company")]
   [HttpGet("{id}/invitations")]
   [SwaggerOperation(Summary = "List Invitations")]
@@ -1145,4 +1237,241 @@ public class CompaniesController : ControllerBase
       companyBalance = companyWallet.BalanceCents
     });
   }
+
+
+  // PUBLIC APIs
+
+  [AllowAnonymous]
+  [HttpGet("all-services")]
+  [SwaggerOperation(Summary = "Public: List Services of all companies (with role-aware filters)")]
+  [ProducesResponseType(typeof(ApiResponse<PageResult<Service>>), 200)]
+  public async Task<ActionResult<ApiResponse<PageResult<Service>>>> ListServicesAllCompanies(
+  [FromQuery] bool? isActive = true,                  // lọc service.IsActive (mặc định true)
+  [FromQuery] string? q = null,
+  [FromQuery] int page = 1,
+  [FromQuery] int size = 10,
+  [FromQuery] string? sort = null,                    // nếu null/empty => ưu tiên Premium→Basic→Free + random
+  [FromQuery] bool? companyIsActive = null            // Admin có thể xem tất cả hoặc lọc; non-admin mặc định true
+)
+  {
+    var baseQuery =
+      from s in _db.Services
+      join c in _db.Companies on s.CompanyId equals c.Id
+      select new { S = s, C = c };
+
+    // service.IsActive
+    if (isActive.HasValue)
+      baseQuery = baseQuery.Where(x => x.S.IsActive == isActive.Value);
+
+    // search theo service
+    if (!string.IsNullOrWhiteSpace(q))
+      baseQuery = baseQuery.Where(x =>
+        x.S.Title.Contains(q) ||
+        (x.S.Description != null && x.S.Description.Contains(q)));
+
+    // role-aware filter company.IsActive
+    var isAdmin = User.IsInRole("Admin");
+    if (isAdmin)
+    {
+      if (companyIsActive.HasValue)
+        baseQuery = baseQuery.Where(x => x.C.IsActive == companyIsActive.Value);
+    }
+    else
+    {
+      var onlyActiveCompanies = companyIsActive ?? true; // mặc định true cho non-admin
+      baseQuery = baseQuery.Where(x => x.C.IsActive == onlyActiveCompanies);
+    }
+
+    // gắn rank membership
+    var ranked = baseQuery.Select(x => new
+    {
+      x.S,
+      x.C,
+      MembershipRank = x.C.Membership == "Premium" ? 3 :
+                        x.C.Membership == "Basic" ? 2 : 1
+    });
+
+    // sort
+    if (string.IsNullOrWhiteSpace(sort))
+    {
+      // DEFAULT: ưu tiên rank, random trong nhóm
+      ranked = ranked
+        .OrderByDescending(x => x.MembershipRank)
+        .ThenBy(_ => EF.Functions.Random());
+    }
+    else
+    {
+      var s = sort.Split(':');
+      var field = s[0];
+      var dir = s.Length > 1 ? s[1] : "desc";
+
+      ranked = (field, dir) switch
+      {
+        ("price", "asc") => ranked.OrderBy(x => x.S.PriceCents),
+        ("price", "desc") => ranked.OrderByDescending(x => x.S.PriceCents),
+
+        ("title", "asc") => ranked.OrderBy(x => x.S.Title),
+        ("title", "desc") => ranked.OrderByDescending(x => x.S.Title),
+
+        ("createdAt", "asc") => ranked.OrderBy(x => x.S.CreatedAt),
+        ("createdAt", "desc") => ranked.OrderByDescending(x => x.S.CreatedAt),
+
+        ("updatedAt", "asc") => ranked.OrderBy(x => x.S.UpdatedAt),
+        _ => ranked.OrderByDescending(x => x.S.UpdatedAt),
+      };
+    }
+
+    // chỉ còn Service để phân trang
+    var qServices = ranked.Select(x => x.S);
+
+    var total = await qServices.CountAsync();
+    var items = await qServices
+      .Skip((page - 1) * size)
+      .Take(size)
+      .ToListAsync();
+
+    return ApiResponse<PageResult<Service>>.Ok(new PageResult<Service>
+    {
+      page = page,
+      size = size,
+      totalItems = total,
+      totalPages = (int)Math.Ceiling(total / (double)size),
+      hasNext = page * size < total,
+      hasPrev = page > 1,
+      items = items
+    });
+  }
+
+  // [AllowAnonymous]
+  // [HttpGet("{companyId}/public")]
+  // [SwaggerOperation(Summary = "Public: Company profile with active services")]
+  // [ProducesResponseType(typeof(ApiResponse<CompanyPublicDto>), 200)]
+  // public async Task<ActionResult<ApiResponse<CompanyPublicDto>>> GetCompanyPublicProfile(
+  // [FromRoute] string companyId,
+  // [FromQuery] int page = 1,
+  // [FromQuery] int size = 6,
+  // [FromQuery] string? sort = "updatedAt:desc")
+  // {
+  //   var company = await _db.Companies.FirstOrDefaultAsync(c => c.Id == companyId);
+  //   if (company == null)
+  //     return ApiResponse<CompanyPublicDto>.Fail("NOT_FOUND", "Company không tồn tại");
+
+  //   // Chỉ đếm / lấy services đang hoạt động
+  //   var svcQuery = _db.Services.Where(s => s.CompanyId == companyId && s.IsActive);
+
+  //   // sort dịch vụ
+  //   if (!string.IsNullOrWhiteSpace(sort))
+  //   {
+  //     var s = sort.Split(':'); var field = s[0]; var dir = s.Length > 1 ? s[1] : "desc";
+  //     svcQuery = (field, dir) switch
+  //     {
+  //       ("price", "asc") => svcQuery.OrderBy(sv => sv.PriceCents),
+  //       ("price", "desc") => svcQuery.OrderByDescending(sv => sv.PriceCents),
+  //       ("title", "asc") => svcQuery.OrderBy(sv => sv.Title),
+  //       ("title", "desc") => svcQuery.OrderByDescending(sv => sv.Title),
+  //       ("createdAt", "asc") => svcQuery.OrderBy(sv => sv.CreatedAt),
+  //       ("createdAt", "desc") => svcQuery.OrderByDescending(sv => sv.CreatedAt),
+  //       ("updatedAt", "asc") => svcQuery.OrderBy(sv => sv.UpdatedAt),
+  //       _ => svcQuery.OrderByDescending(sv => sv.UpdatedAt)
+  //     };
+  //   }
+
+  //   var totalActive = await svcQuery.CountAsync();
+  //   var services = await svcQuery.Skip((page - 1) * size).Take(size).ToListAsync();
+
+  //   // Đếm số tài xế đang có quan hệ (bảng CompanyDriverRelations)
+  //   var driversCount = await _db.CompanyDriverRelations
+  //                               .CountAsync(r => r.CompanyId == companyId);
+
+  //   var dto = new CompanyPublicDto
+  //   {
+  //     Company = company,
+  //     Rating = company.Rating,
+  //     ActiveServicesCount = totalActive,
+  //     DriversCount = driversCount,
+  //     Services = services
+  //   };
+
+  //   return ApiResponse<CompanyPublicDto>.Ok(dto);
+  // }
+
+  [AllowAnonymous]
+  [HttpGet("{companyId}/public")]
+  [SwaggerOperation(Summary = "Public: Company profile with active services")]
+  [ProducesResponseType(typeof(ApiResponse<CompanyPublicDto>), 200)]
+  public async Task<ActionResult<ApiResponse<CompanyPublicDto>>> GetCompanyPublicProfile(
+  [FromRoute] string companyId,
+  [FromQuery] int page = 1,
+  [FromQuery] int size = 6,
+  [FromQuery] string? sort = "updatedAt:desc")
+  {
+    if (page <= 0) page = 1;
+    if (size <= 0) size = 6;
+
+    var company = await _db.Companies.AsNoTracking()
+      .FirstOrDefaultAsync(c => c.Id == companyId);
+
+    if (company == null)
+      return ApiResponse<CompanyPublicDto>.Fail("NOT_FOUND", "Company không tồn tại");
+
+    // query chỉ lấy services đang active của công ty
+    IQueryable<Service> svcQuery = _db.Services.AsNoTracking()
+      .Where(s => s.CompanyId == companyId && s.IsActive);
+
+    // sort dịch vụ
+    if (!string.IsNullOrWhiteSpace(sort))
+    {
+      var s = sort.Split(':');
+      var field = s[0].Trim();
+      var dir = (s.Length > 1 ? s[1] : "desc").Trim().ToLowerInvariant();
+
+      svcQuery = (field, dir) switch
+      {
+        ("price", "asc") => svcQuery.OrderBy(sv => sv.PriceCents),
+        ("price", "desc") => svcQuery.OrderByDescending(sv => sv.PriceCents),
+        ("title", "asc") => svcQuery.OrderBy(sv => sv.Title),
+        ("title", "desc") => svcQuery.OrderByDescending(sv => sv.Title),
+        ("createdAt", "asc") => svcQuery.OrderBy(sv => sv.CreatedAt),
+        ("createdAt", "desc") => svcQuery.OrderByDescending(sv => sv.CreatedAt),
+        ("updatedAt", "asc") => svcQuery.OrderBy(sv => sv.UpdatedAt),
+        _ => svcQuery.OrderByDescending(sv => sv.UpdatedAt)
+      };
+    }
+    else
+    {
+      svcQuery = svcQuery.OrderByDescending(sv => sv.UpdatedAt);
+    }
+
+    var totalActive = await svcQuery.CountAsync();
+
+    var services = await svcQuery
+      .Skip((page - 1) * size)
+      .Take(size)
+      .ToListAsync();
+
+    // số tài xế đã có quan hệ với công ty (không lọc active)
+    var driversCount = await _db.CompanyDriverRelations
+      .AsNoTracking()
+      .CountAsync(r => r.CompanyId == companyId);
+
+    var dto = new CompanyPublicDto
+    {
+      Company = company,
+      Rating = company.Rating,
+      ActiveServicesCount = totalActive,
+      DriversCount = driversCount,
+      Services = services,
+
+      // metadata (FE có thể bỏ qua)
+      Page = page,
+      Size = size,
+      TotalItems = totalActive,
+      TotalPages = (int)Math.Ceiling(totalActive / (double)size)
+    };
+
+    return ApiResponse<CompanyPublicDto>.Ok(dto);
+  }
+
+
+
 }
