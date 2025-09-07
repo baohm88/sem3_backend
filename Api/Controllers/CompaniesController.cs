@@ -453,48 +453,6 @@ public class CompaniesController : ControllerBase
   }
 
   // UPDATE
-  // [Authorize(Roles = "Company")]
-  // [HttpPut("{companyId}/services/{serviceId}")]
-  // [Consumes("application/json")]
-  // [SwaggerOperation(Summary = "Update Service")]
-  // [ProducesResponseType(typeof(ApiResponse<Service>), 200)]
-  // public async Task<ActionResult<ApiResponse<Service>>> UpdateService(
-  //     [FromRoute] string companyId,
-  //     [FromRoute] string serviceId,
-  //     [FromBody] UpdateServiceDto dto)
-  // {
-  //   var svc = await GetOwnedServiceAsync(companyId, serviceId);
-  //   if (svc == null) return Forbidden<Service>();
-
-  //   if (dto.Title is not null) svc.Title = dto.Title;
-  //   if (dto.Description is not null) svc.Description = dto.Description;
-
-  //   if (dto.ImgUrl is not null)
-  //   {
-  //     if (string.IsNullOrWhiteSpace(dto.ImgUrl)) svc.ImgUrl = null; // cho phép xoá ảnh
-  //     else
-  //     {
-  //       var normalized = UrlHelper.TryNormalizeUrl(dto.ImgUrl);
-  //       if (normalized == null)
-  //         return ApiResponse<Service>.Fail("IMG_URL_INVALID", "ImgUrl không hợp lệ (http/https).");
-  //       svc.ImgUrl = normalized;
-  //     }
-  //   }
-
-  //   if (dto.PriceCents.HasValue)
-  //   {
-  //     if (dto.PriceCents.Value <= 0)
-  //       return ApiResponse<Service>.Fail("VALIDATION", "PriceCents phải > 0");
-  //     svc.PriceCents = dto.PriceCents.Value;
-  //   }
-
-  //   if (dto.IsActive.HasValue) svc.IsActive = dto.IsActive.Value;
-
-  //   svc.UpdatedAt = DateTime.UtcNow;
-  //   await _db.SaveChangesAsync();
-  //   return ApiResponse<Service>.Ok(svc);
-  // }
-
   [Authorize(Roles = "Company")]
   [HttpPut("{companyId}/services/{serviceId}")]
   [Consumes("application/json")]
@@ -768,66 +726,7 @@ public class CompaniesController : ControllerBase
   }
 
 
-
   // ========= Pay Salary =========
-  // [Authorize(Roles = "Company")]
-  // [HttpPost("{id}/pay-salary")]
-  // [SwaggerOperation(Summary = "Pay Driver Salary")]
-  // [ProducesResponseType(typeof(ApiResponse<object>), 200)]
-  // public async Task<ActionResult<ApiResponse<object>>> PaySalary([FromRoute] string id, [FromBody] PaySalaryDto dto)
-  // {
-  //   var company = await GetOwnedCompanyAsync(id);
-  //   if (company == null) return Forbidden<object>();
-  //   if (dto.AmountCents <= 0) return ApiResponse<object>.Fail("VALIDATION", "AmountCents phải > 0");
-
-  //   var companyWallet = await _db.Wallets.FirstOrDefaultAsync(w => w.OwnerType == "Company" && w.OwnerRefId == id);
-  //   if (companyWallet == null) return ApiResponse<object>.Fail("NO_WALLET", "Company chưa có ví");
-  //   if (companyWallet.BalanceCents < dto.AmountCents) return ApiResponse<object>.Fail("INSUFFICIENT_FUNDS", "Số dư không đủ");
-
-  //   var driverWallet = await _db.Wallets.FirstOrDefaultAsync(w => w.OwnerType == "Driver" && w.OwnerRefId == dto.DriverUserId);
-  //   if (driverWallet == null)
-  //   {
-  //     driverWallet = new Wallet
-  //     {
-  //       Id = NewId(),
-  //       OwnerType = "Driver",
-  //       OwnerRefId = dto.DriverUserId,
-  //       BalanceCents = 0,
-  //       LowBalanceThreshold = 10000,
-  //       UpdatedAt = DateTime.UtcNow
-  //     };
-  //     _db.Wallets.Add(driverWallet);
-  //   }
-
-  //   companyWallet.BalanceCents -= dto.AmountCents;
-  //   companyWallet.UpdatedAt = DateTime.UtcNow;
-  //   driverWallet.BalanceCents += dto.AmountCents;
-  //   driverWallet.UpdatedAt = DateTime.UtcNow;
-
-  //   var tx = new Transaction
-  //   {
-  //     Id = NewId(),
-  //     FromWalletId = companyWallet.Id,
-  //     ToWalletId = driverWallet.Id,
-  //     AmountCents = dto.AmountCents,
-  //     Status = TxStatus.Completed,
-  //     IdempotencyKey = dto.IdempotencyKey,
-  //     CreatedAt = DateTime.UtcNow,
-  //     Type = TxType.PaySalary,
-  //     RefId = dto.DriverUserId,
-  //     MetaJson = JsonSerializer.Serialize(new { companyId = company.Id, driverUserId = dto.DriverUserId })
-  //   };
-  //   _db.Transactions.Add(tx);
-
-  //   await _db.SaveChangesAsync();
-  //   return ApiResponse<object>.Ok(new
-  //   {
-  //     transactionId = tx.Id,
-  //     companyBalance = companyWallet.BalanceCents,
-  //     driverBalance = driverWallet.BalanceCents
-  //   });
-  // }
-
   [Authorize(Roles = "Company")]
   [HttpPost("{id}/pay-salary")]
   [SwaggerOperation(Summary = "Pay Driver Salary")]
@@ -1429,59 +1328,7 @@ public class CompaniesController : ControllerBase
       items = items
     });
   }
-
-  // [AllowAnonymous]
-  // [HttpGet("{companyId}/public")]
-  // [SwaggerOperation(Summary = "Public: Company profile with active services")]
-  // [ProducesResponseType(typeof(ApiResponse<CompanyPublicDto>), 200)]
-  // public async Task<ActionResult<ApiResponse<CompanyPublicDto>>> GetCompanyPublicProfile(
-  // [FromRoute] string companyId,
-  // [FromQuery] int page = 1,
-  // [FromQuery] int size = 6,
-  // [FromQuery] string? sort = "updatedAt:desc")
-  // {
-  //   var company = await _db.Companies.FirstOrDefaultAsync(c => c.Id == companyId);
-  //   if (company == null)
-  //     return ApiResponse<CompanyPublicDto>.Fail("NOT_FOUND", "Company không tồn tại");
-
-  //   // Chỉ đếm / lấy services đang hoạt động
-  //   var svcQuery = _db.Services.Where(s => s.CompanyId == companyId && s.IsActive);
-
-  //   // sort dịch vụ
-  //   if (!string.IsNullOrWhiteSpace(sort))
-  //   {
-  //     var s = sort.Split(':'); var field = s[0]; var dir = s.Length > 1 ? s[1] : "desc";
-  //     svcQuery = (field, dir) switch
-  //     {
-  //       ("price", "asc") => svcQuery.OrderBy(sv => sv.PriceCents),
-  //       ("price", "desc") => svcQuery.OrderByDescending(sv => sv.PriceCents),
-  //       ("title", "asc") => svcQuery.OrderBy(sv => sv.Title),
-  //       ("title", "desc") => svcQuery.OrderByDescending(sv => sv.Title),
-  //       ("createdAt", "asc") => svcQuery.OrderBy(sv => sv.CreatedAt),
-  //       ("createdAt", "desc") => svcQuery.OrderByDescending(sv => sv.CreatedAt),
-  //       ("updatedAt", "asc") => svcQuery.OrderBy(sv => sv.UpdatedAt),
-  //       _ => svcQuery.OrderByDescending(sv => sv.UpdatedAt)
-  //     };
-  //   }
-
-  //   var totalActive = await svcQuery.CountAsync();
-  //   var services = await svcQuery.Skip((page - 1) * size).Take(size).ToListAsync();
-
-  //   // Đếm số tài xế đang có quan hệ (bảng CompanyDriverRelations)
-  //   var driversCount = await _db.CompanyDriverRelations
-  //                               .CountAsync(r => r.CompanyId == companyId);
-
-  //   var dto = new CompanyPublicDto
-  //   {
-  //     Company = company,
-  //     Rating = company.Rating,
-  //     ActiveServicesCount = totalActive,
-  //     DriversCount = driversCount,
-  //     Services = services
-  //   };
-
-  //   return ApiResponse<CompanyPublicDto>.Ok(dto);
-  // }
+  
 
   [AllowAnonymous]
   [HttpGet("{companyId}/public")]
