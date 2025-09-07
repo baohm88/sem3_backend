@@ -217,35 +217,106 @@ public class CompaniesController : ControllerBase
   }
 
   // ========= List Company Drivers =========
-  [HttpGet("{id}/drivers")]
-  [SwaggerOperation(Summary = "List Company Drivers")]
+  // [HttpGet("{id}/drivers")]
+  // [SwaggerOperation(Summary = "List Company Drivers")]
+  // [ProducesResponseType(typeof(ApiResponse<PageResult<CompanyDriverDto>>), 200)]
+  // public async Task<ActionResult<ApiResponse<PageResult<CompanyDriverDto>>>> ListCompanyDrivers(
+  //     [FromRoute] string id, [FromQuery] int page = 1, [FromQuery] int size = 10,
+  //     [FromQuery] string? name = null, [FromQuery] decimal? minRating = null)
+  // {
+  //   var q = from rel in _db.CompanyDriverRelations
+  //           where rel.CompanyId == id
+  //           join d in _db.DriverProfiles on rel.DriverUserId equals d.UserId into dd
+  //           from d in dd.DefaultIfEmpty()
+  //           select new CompanyDriverDto
+  //           {
+  //             RelationId = rel.Id,
+  //             DriverUserId = rel.DriverUserId,
+  //             FullName = d != null ? d.FullName : null,
+  //             Phone = d != null ? d.Phone : null,
+  //             ImgUrl = d != null ? d.ImgUrl : null,
+  //             Rating = d != null ? d.Rating : 0,
+  //             BaseSalaryCents = rel.BaseSalaryCents
+  //           };
+
+  //   if (!string.IsNullOrWhiteSpace(name))
+  //     q = q.Where(x => x.FullName != null && x.FullName.Contains(name));
+  //   if (minRating.HasValue)
+  //     q = q.Where(x => x.Rating >= minRating.Value);
+
+  //   var total = await q.CountAsync();
+  //   var items = await q.Skip((page - 1) * size).Take(size).ToListAsync();
+
+  //   return ApiResponse<PageResult<CompanyDriverDto>>.Ok(new PageResult<CompanyDriverDto>
+  //   {
+  //     page = page,
+  //     size = size,
+  //     totalItems = total,
+  //     totalPages = (int)Math.Ceiling(total / (double)size),
+  //     hasNext = page * size < total,
+  //     hasPrev = page > 1,
+  //     items = items
+  //   });
+  // }
+
+  [Authorize(Roles = "Company")]
+  [HttpGet("{companyId}/drivers")]
+  [SwaggerOperation(Summary = "List drivers employed by this company")]
   [ProducesResponseType(typeof(ApiResponse<PageResult<CompanyDriverDto>>), 200)]
   public async Task<ActionResult<ApiResponse<PageResult<CompanyDriverDto>>>> ListCompanyDrivers(
-      [FromRoute] string id, [FromQuery] int page = 1, [FromQuery] int size = 10,
-      [FromQuery] string? name = null, [FromQuery] decimal? minRating = null)
+    [FromRoute] string companyId,
+    [FromQuery] string? name = null,
+    [FromQuery] bool? isAvailable = null,
+    [FromQuery] decimal? minRating = null,
+    [FromQuery] int page = 1,
+    [FromQuery] int size = 10,
+    [FromQuery] string? sort = "joinedAt:desc")
   {
-    var q = from rel in _db.CompanyDriverRelations
-            where rel.CompanyId == id
-            join d in _db.DriverProfiles on rel.DriverUserId equals d.UserId into dd
-            from d in dd.DefaultIfEmpty()
-            select new CompanyDriverDto
-            {
-              RelationId = rel.Id,
-              DriverUserId = rel.DriverUserId,
-              FullName = d != null ? d.FullName : null,
-              Phone = d != null ? d.Phone : null,
-              ImgUrl = d != null ? d.ImgUrl : null,
-              Rating = d != null ? d.Rating : 0,
-              BaseSalaryCents = rel.BaseSalaryCents
-            };
+    var company = await GetOwnedCompanyAsync(companyId);
+    if (company == null) return Forbidden<PageResult<CompanyDriverDto>>();
+
+    var query = from rel in _db.CompanyDriverRelations
+                join d in _db.DriverProfiles on rel.DriverUserId equals d.UserId
+                where rel.CompanyId == companyId
+                select new CompanyDriverDto
+                {
+                  UserId = d.UserId,
+                  FullName = d.FullName,
+                  Phone = d.Phone,
+                  Bio = d.Bio,
+                  ImgUrl = d.ImgUrl,
+                  Rating = d.Rating,
+                  Skills = d.Skills,
+                  Location = d.Location,
+                  IsAvailable = d.IsAvailable,
+                  JoinedAt = rel.CreatedAt,
+                  BaseSalaryCents = rel.BaseSalaryCents
+                };
 
     if (!string.IsNullOrWhiteSpace(name))
-      q = q.Where(x => x.FullName != null && x.FullName.Contains(name));
+      query = query.Where(x => x.FullName.Contains(name));
+    if (isAvailable.HasValue)
+      query = query.Where(x => x.IsAvailable == isAvailable.Value);
     if (minRating.HasValue)
-      q = q.Where(x => x.Rating >= minRating.Value);
+      query = query.Where(x => x.Rating >= minRating.Value);
 
-    var total = await q.CountAsync();
-    var items = await q.Skip((page - 1) * size).Take(size).ToListAsync();
+    // sort
+    if (!string.IsNullOrWhiteSpace(sort))
+    {
+      var s = sort.Split(':'); var field = s[0]; var dir = s.Length > 1 ? s[1] : "desc";
+      query = (field, dir) switch
+      {
+        ("rating", "asc") => query.OrderBy(x => x.Rating),
+        ("rating", "desc") => query.OrderByDescending(x => x.Rating),
+        ("name", "asc") => query.OrderBy(x => x.FullName),
+        ("name", "desc") => query.OrderByDescending(x => x.FullName),
+        ("joinedAt", "asc") => query.OrderBy(x => x.JoinedAt),
+        _ => query.OrderByDescending(x => x.JoinedAt)
+      };
+    }
+
+    var total = await query.CountAsync();
+    var items = await query.Skip((page - 1) * size).Take(size).ToListAsync();
 
     return ApiResponse<PageResult<CompanyDriverDto>>.Ok(new PageResult<CompanyDriverDto>
     {
@@ -261,48 +332,6 @@ public class CompaniesController : ControllerBase
 
   // ========= SERVICES =========
   // CREATE
-  // [Authorize(Roles = "Company")]
-  // [HttpPost("{companyId}/services")]
-  // [SwaggerOperation(Summary = "Create Company Service")]
-  // [ProducesResponseType(typeof(ApiResponse<Service>), 200)]
-  // public async Task<ActionResult<ApiResponse<Service>>> CreateService(
-  //     [FromRoute] string companyId,
-  //     [FromBody] AddServiceDto dto)
-  // {
-  //   var company = await GetOwnedCompanyAsync(companyId);
-  //   if (company == null) return Forbidden<Service>();
-
-  //   if (string.IsNullOrWhiteSpace(dto.Title))
-  //     return ApiResponse<Service>.Fail("VALIDATION", "Title bắt buộc");
-  //   if (dto.PriceCents <= 0)
-  //     return ApiResponse<Service>.Fail("VALIDATION", "PriceCents phải > 0");
-
-  //   if (!string.IsNullOrWhiteSpace(dto.ImgUrl))
-  //   {
-  //     var normalized = UrlHelper.TryNormalizeUrl(dto.ImgUrl);
-  //     if (normalized == null)
-  //       return ApiResponse<Service>.Fail("IMG_URL_INVALID", "ImgUrl không hợp lệ (http/https).");
-  //     svc.ImgUrl = normalized;
-  //   }
-
-
-  //   var svc = new Service
-  //   {
-  //     Id = NewId(),
-  //     CompanyId = company.Id,
-  //     Title = dto.Title!,
-  //     Description = dto.Description,
-  //     PriceCents = dto.PriceCents,
-  //     IsActive = dto.IsActive ?? true,
-  //     CreatedAt = DateTime.UtcNow,
-  //     UpdatedAt = DateTime.UtcNow
-  //   };
-
-  //   _db.Services.Add(svc);
-  //   await _db.SaveChangesAsync();
-  //   return ApiResponse<Service>.Ok(svc);
-  // }
-
   [Authorize(Roles = "Company")]
   [HttpPost("{companyId}/services")]
   [SwaggerOperation(Summary = "Create Company Service")]
