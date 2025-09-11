@@ -4,6 +4,117 @@
         <name>Api</name>
     </assembly>
     <members>
+        <member name="T:Api.Common.ApiError">
+            <summary>
+            Standard error payload for API responses.
+            </summary>
+        </member>
+        <member name="P:Api.Common.ApiError.code">
+            <summary>
+            Machine-readable error code (e.g., "VALIDATION_ERROR", "NOT_FOUND").
+            </summary>
+        </member>
+        <member name="P:Api.Common.ApiError.message">
+            <summary>
+            Human-readable error message.
+            </summary>
+        </member>
+        <member name="P:Api.Common.ApiError.details">
+            <summary>
+            Optional, any extra data to help clients debug (fields, ids, etc.).
+            </summary>
+        </member>
+        <member name="T:Api.Common.ApiResponse`1">
+            <summary>
+            Generic API response envelope.
+            Exactly one of <see cref="P:Api.Common.ApiResponse`1.data"/> or <see cref="P:Api.Common.ApiResponse`1.error"/> should be populated.
+            </summary>
+            <typeparam name="T">Type of the successful response payload.</typeparam>
+        </member>
+        <member name="P:Api.Common.ApiResponse`1.success">
+            <summary>
+            Indicates whether the request was handled successfully.
+            </summary>
+        </member>
+        <member name="P:Api.Common.ApiResponse`1.data">
+            <summary>
+            Successful result payload when <see cref="P:Api.Common.ApiResponse`1.success"/> is true.
+            </summary>
+        </member>
+        <member name="P:Api.Common.ApiResponse`1.error">
+            <summary>
+            Error payload when <see cref="P:Api.Common.ApiResponse`1.success"/> is false.
+            </summary>
+        </member>
+        <member name="M:Api.Common.ApiResponse`1.Ok(`0)">
+            <summary>
+            Factory: build a successful response with data.
+            </summary>
+        </member>
+        <member name="M:Api.Common.ApiResponse`1.Fail(System.String,System.String,System.Object)">
+            <summary>
+            Factory: build a failed response with an error.
+            </summary>
+        </member>
+        <member name="T:Api.Common.PageResult`1">
+            <summary>
+            Standard pagination envelope for list endpoints.
+            </summary>
+            <typeparam name="T">Type of each item in the page.</typeparam>
+        </member>
+        <member name="P:Api.Common.PageResult`1.page">
+            <summary>
+            1-based current page index.
+            </summary>
+        </member>
+        <member name="P:Api.Common.PageResult`1.size">
+            <summary>
+            Page size (items per page).
+            </summary>
+        </member>
+        <member name="P:Api.Common.PageResult`1.totalItems">
+            <summary>
+            Total number of items across all pages.
+            </summary>
+        </member>
+        <member name="P:Api.Common.PageResult`1.totalPages">
+            <summary>
+            Total number of pages.
+            </summary>
+        </member>
+        <member name="P:Api.Common.PageResult`1.hasNext">
+            <summary>
+            True if a next page exists.
+            </summary>
+        </member>
+        <member name="P:Api.Common.PageResult`1.hasPrev">
+            <summary>
+            True if a previous page exists.
+            </summary>
+        </member>
+        <member name="P:Api.Common.PageResult`1.items">
+            <summary>
+            Items contained in the current page.
+            </summary>
+        </member>
+        <member name="T:Api.Common.UrlHelper">
+            <summary>
+            URL helper utilities for normalization and validation.
+            </summary>
+        </member>
+        <member name="M:Api.Common.UrlHelper.TryNormalizeUrl(System.String,System.Boolean,System.Int32)">
+            <summary>
+            Normalize a raw URL string:
+            - Trim spaces
+            - Optionally add "https://" if scheme is missing
+            - Enforce max length
+            - Ensure it is a valid HTTP/HTTPS absolute URL
+            </summary>
+            <param name="raw">The raw input URL.</param>
+            <param name="addHttpsIfMissing">Whether to automatically add https:// if missing.</param>
+            <param name="maxLen">Maximum allowed length for the URL.</param>
+            <returns>Normalized URL string or null if invalid.</returns>
+        </member>
         <member name="P:Api.Contracts.Companies.AddServiceDto.Title">
             <example>Bike Ride</example>
         </member>
@@ -15,9 +126,6 @@
         </member>
         <member name="P:Api.Contracts.Companies.AddServiceDto.IsActive">
             <example>true</example>
-        </member>
-        <member name="T:Api.Contracts.Companies.CompanyDriverDto">
-            <summary>Thông tin driver thuộc company</summary>
         </member>
         <member name="P:Api.Contracts.Companies.InviteDriverDto.DriverUserId">
             <example>68a000000000000000000007</example>
