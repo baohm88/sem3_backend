@@ -1,13 +1,20 @@
 using System.ComponentModel.DataAnnotations;
+
 namespace Api.Contracts.Riders;
 
+/// <summary>
+/// Payload for updating a Rider's public profile fields.
+/// All properties are optional; only provided fields will be updated.
+/// </summary>
 public class UpdateRiderDto
 {
-    /// <summary>Họ tên Rider</summary>
+    /// <summary>Rider's full name.</summary>
     public string? FullName { get; set; }
-    /// <summary>Số điện thoại</summary>
+
+    /// <summary>Phone number.</summary>
     public string? Phone { get; set; }
-    /// <summary>Ảnh đại diện URL</summary>
+
+    /// <summary>Avatar image URL.</summary>
     [Url]
     public string? ImgUrl { get; set; }
 }

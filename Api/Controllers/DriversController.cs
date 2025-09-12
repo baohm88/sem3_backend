@@ -12,7 +12,6 @@ using System.Linq;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 
-
 namespace Api.Controllers;
 
 [ApiController]
@@ -24,14 +23,18 @@ public class DriversController : ControllerBase
   public DriversController(AppDbContext db) => _db = db;
 
   // ===== Helpers =====
+
+  /// <summary>Resolve current user id from claims.</summary>
   private string? GetUserId() =>
       User.FindFirstValue(ClaimTypes.NameIdentifier) ??
       User.FindFirstValue(ClaimTypes.Name) ??
       User.FindFirstValue("sub");
 
+  /// <summary>Convenience Forbidden response.</summary>
   private ActionResult<ApiResponse<T>> Forbidden<T>() =>
-      ApiResponse<T>.Fail("FORBIDDEN", "Bạn không có quyền trên tài nguyên này");
+      ApiResponse<T>.Fail("FORBIDDEN", "You don't have permission on this resource.");
 
+  /// <summary>Get driver profile if it belongs to the current user; otherwise null.</summary>
   private async Task<DriverProfile?> GetOwnedDriverAsync(string driverUserId)
   {
     var uid = GetUserId();
@@ -42,12 +45,15 @@ public class DriversController : ControllerBase
 
   private static string NewId() => Guid.NewGuid().ToString("N")[..24];
 
+  /// <summary>
+  /// Normalize skills input: accept JSON array or CSV; trim, deduplicate (case-insensitive), re-serialize as JSON array.
+  /// </summary>
   private static string? NormalizeSkills(string? input)
   {
     if (string.IsNullOrWhiteSpace(input)) return null;
     var s = input.Trim();
 
-    // 1) Nếu đã là JSON array hợp lệ -> parse & re-serialize chuẩn
+    // 1) If it's already a valid JSON array -> parse & re-serialize cleanly
     if (s.StartsWith("["))
     {
       try
@@ -63,7 +69,7 @@ public class DriversController : ControllerBase
           return JsonSerializer.Serialize(clean);
         }
       }
-      catch { /* rơi xuống CSV parse */ }
+      catch { /* fall through to CSV parse */ }
     }
 
     // 2) CSV -> array
@@ -73,13 +79,14 @@ public class DriversController : ControllerBase
                  .Distinct(StringComparer.OrdinalIgnoreCase)
                  .ToList();
 
-    // Nếu người dùng chỉ gõ một từ không có dấu phẩy vẫn OK
+    // If user typed a single token without commas, still accept it
     if (parts.Count == 0 && s.Length > 0) parts = new List<string> { s };
 
     return JsonSerializer.Serialize(parts);
   }
 
   // ========= Me =========
+
   [Authorize(Roles = "Driver")]
   [HttpGet("me")]
   [SwaggerOperation(Summary = "Get My Driver Profile (auto-create if missing)")]
@@ -156,7 +163,7 @@ public class DriversController : ControllerBase
       {
         var normalized = UrlHelper.TryNormalizeUrl(dto.ImgUrl);
         if (normalized == null)
-          return ApiResponse<DriverProfile>.Fail("IMG_URL_INVALID", "Ảnh đại diện không phải URL hợp lệ (http/https).");
+          return ApiResponse<DriverProfile>.Fail("IMG_URL_INVALID", "Avatar is not a valid URL (http/https).");
         p.ImgUrl = normalized;
       }
 
@@ -169,8 +176,8 @@ public class DriversController : ControllerBase
     return ApiResponse<DriverProfile>.Ok(p);
   }
 
-
   // ========= Public listing & detail =========
+
   [HttpGet]
   [SwaggerOperation(Summary = "List Drivers")]
   [ProducesResponseType(typeof(ApiResponse<PageResult<DriverForListDto>>), 200)]
@@ -180,7 +187,7 @@ public class DriversController : ControllerBase
     [FromQuery] string? location = null,
     [FromQuery] bool? isAvailable = null,
     [FromQuery] decimal? minRating = null,
-    // NEW: cho phép ẩn driver đã hired
+    // NEW: allow hiding drivers who are already hired
     [FromQuery] bool? excludeHired = null,
     [FromQuery] int page = 1,
     [FromQuery] int size = 10,
@@ -207,14 +214,14 @@ public class DriversController : ControllerBase
     if (minRating.HasValue)
       q = q.Where(d => d.Rating >= minRating.Value);
 
-    // NEW: filter ẩn driver đã có quan hệ với bất kỳ company nào
+    // NEW: filter out drivers that have any relation with a company
     if (excludeHired == true)
     {
       q = q.Where(d => !_db.CompanyDriverRelations
                         .Any(r => r.DriverUserId == d.UserId));
     }
 
-    // sort (giữ nguyên logic cũ)
+    // sort (preserve existing logic)
     if (!string.IsNullOrWhiteSpace(sort))
     {
       var s = sort.Split(':'); var field = s[0]; var dir = s.Length > 1 ? s[1] : "asc";
@@ -230,7 +237,7 @@ public class DriversController : ControllerBase
 
     var total = await q.CountAsync();
 
-    // Project sang DTO và tính IsHired bằng subquery Any()
+    // Project to DTO and compute IsHired using a subquery Any()
     var items = await q
       .Skip((page - 1) * size)
       .Take(size)
@@ -270,11 +277,12 @@ public class DriversController : ControllerBase
   public async Task<ActionResult<ApiResponse<DriverProfile>>> GetDriverByUserId([FromRoute] string userId)
   {
     var p = await _db.DriverProfiles.FirstOrDefaultAsync(x => x.UserId == userId);
-    if (p == null) return ApiResponse<DriverProfile>.Fail("NOT_FOUND", "Driver không tồn tại");
+    if (p == null) return ApiResponse<DriverProfile>.Fail("NOT_FOUND", "Driver does not exist.");
     return ApiResponse<DriverProfile>.Ok(p);
   }
 
   // ========= Availability =========
+
   [Authorize(Roles = "Driver")]
   [HttpPost("{userId}/availability")]
   [SwaggerOperation(Summary = "Set Availability")]
@@ -290,6 +298,7 @@ public class DriversController : ControllerBase
   }
 
   // ========= Wallet =========
+
   [Authorize(Roles = "Driver")]
   [HttpGet("{userId}/wallet")]
   [SwaggerOperation(Summary = "Get Driver Wallet")]
@@ -317,7 +326,6 @@ public class DriversController : ControllerBase
     return ApiResponse<Wallet>.Ok(wallet);
   }
 
-
   [Authorize(Roles = "Driver")]
   [HttpPost("{userId}/wallet/topup")]
   [SwaggerOperation(Summary = "Topup Driver Wallet")]
@@ -326,15 +334,15 @@ public class DriversController : ControllerBase
     [FromRoute] string userId,
     [FromBody] Api.Contracts.Drivers.TopupDto dto)
   {
-    // Chỉ cho phép owner tự nạp ví của mình
+    // Only allow the owner to top up their own wallet
     var uid = User.FindFirstValue(ClaimTypes.NameIdentifier) ?? User.FindFirstValue("sub");
     if (uid == null || uid != userId)
-      return ApiResponse<object>.Fail("FORBIDDEN", "Bạn không có quyền nạp ví cho user này");
+      return ApiResponse<object>.Fail("FORBIDDEN", "You do not have permission to top up this user's wallet.");
 
     if (dto.AmountCents <= 0)
-      return ApiResponse<object>.Fail("VALIDATION", "AmountCents phải > 0");
+      return ApiResponse<object>.Fail("VALIDATION", "AmountCents must be > 0.");
 
-    // Lấy (hoặc tạo) ví Driver
+    // Get (or create) driver wallet
     var wallet = await _db.Wallets.FirstOrDefaultAsync(
         w => w.OwnerType == "Driver" && w.OwnerRefId == userId);
     if (wallet == null)
@@ -358,21 +366,21 @@ public class DriversController : ControllerBase
       if (exists) return ApiResponse<object>.Ok(new { wallet.Id, balance = wallet.BalanceCents });
     }
 
-    // Cộng tiền
+    // Add funds
     wallet.BalanceCents += dto.AmountCents;
     wallet.UpdatedAt = DateTime.UtcNow;
 
-    // Ghi transaction
+    // Record transaction
     var tx = new Transaction
     {
       Id = Guid.NewGuid().ToString("N")[..24],
-      FromWalletId = null,                 // topup: tiền vào hệ thống từ bên ngoài
+      FromWalletId = null,                 // topup: funds enter system from outside
       ToWalletId = wallet.Id,
       AmountCents = dto.AmountCents,
       Status = TxStatus.Completed,
       IdempotencyKey = dto.IdempotencyKey,
       CreatedAt = DateTime.UtcNow,
-      Type = TxType.Topup,                 // đã có trong enum
+      Type = TxType.Topup,
       RefId = userId,
       MetaJson = JsonSerializer.Serialize(new { driverUserId = userId, source = "manual" })
     };
@@ -389,11 +397,11 @@ public class DriversController : ControllerBase
   {
     var p = await GetOwnedDriverAsync(userId);
     if (p == null) return Forbidden<object>();
-    if (dto.AmountCents <= 0) return ApiResponse<object>.Fail("VALIDATION", "AmountCents phải > 0");
+    if (dto.AmountCents <= 0) return ApiResponse<object>.Fail("VALIDATION", "AmountCents must be > 0.");
 
     var wallet = await _db.Wallets.FirstOrDefaultAsync(w => w.OwnerType == "Driver" && w.OwnerRefId == userId);
-    if (wallet == null) return ApiResponse<object>.Fail("NO_WALLET", "Driver chưa có ví");              // (tùy chọn: thông điệp rõ ràng)
-    if (wallet.BalanceCents < dto.AmountCents) return ApiResponse<object>.Fail("INSUFFICIENT_FUNDS", "Số dư không đủ");
+    if (wallet == null) return ApiResponse<object>.Fail("NO_WALLET", "Driver does not have a wallet."); // (optional: clearer message)
+    if (wallet.BalanceCents < dto.AmountCents) return ApiResponse<object>.Fail("INSUFFICIENT_FUNDS", "Insufficient balance.");
 
     if (!string.IsNullOrWhiteSpace(dto.IdempotencyKey))
     {
@@ -413,18 +421,16 @@ public class DriversController : ControllerBase
       Status = TxStatus.Completed,
       IdempotencyKey = dto.IdempotencyKey,
       CreatedAt = DateTime.UtcNow,
-      Type = TxType.Withdraw,                                      // <-- QUAN TRỌNG
-      RefId = userId,                                              // (khuyến nghị)
-      MetaJson = JsonSerializer.Serialize(new { driverUserId = userId, method = "manual" }) // (khuyến nghị)
+      Type = TxType.Withdraw,                                      // IMPORTANT
+      RefId = userId,                                              // (recommended)
+      MetaJson = JsonSerializer.Serialize(new { driverUserId = userId, method = "manual" }) // (recommended)
     };
 
     _db.Transactions.Add(tx);
     await _db.SaveChangesAsync();
 
-    return ApiResponse<object>.Ok(new { wallet.Id, balance = wallet.BalanceCents, transactionId = tx.Id }); // (khuyến nghị)
+    return ApiResponse<object>.Ok(new { wallet.Id, balance = wallet.BalanceCents, transactionId = tx.Id }); // (recommended)
   }
-
-
 
   [Authorize(Roles = "Driver")]
   [HttpGet("{userId}/transactions")]
@@ -467,9 +473,8 @@ public class DriversController : ControllerBase
     });
   }
 
-
-
   // ========= Relationships / Companies =========
+
   [HttpGet("{userId}/companies")]
   [SwaggerOperation(Summary = "List Companies of Driver")]
   [ProducesResponseType(typeof(ApiResponse<PageResult<Company>>), 200)]
@@ -497,6 +502,7 @@ public class DriversController : ControllerBase
   }
 
   // ========= Applications (apply to company) =========
+
   [Authorize(Roles = "Driver")]
   [HttpPost("{userId}/applications")]
   [SwaggerOperation(Summary = "Apply to Company")]
@@ -505,13 +511,13 @@ public class DriversController : ControllerBase
   {
     var p = await GetOwnedDriverAsync(userId);
     if (p == null) return Forbidden<JobApplication>();
-    if (string.IsNullOrWhiteSpace(dto.CompanyId)) return ApiResponse<JobApplication>.Fail("VALIDATION", "CompanyId bắt buộc");
+    if (string.IsNullOrWhiteSpace(dto.CompanyId)) return ApiResponse<JobApplication>.Fail("VALIDATION", "CompanyId is required.");
 
     var dup = await _db.JobApplications.AnyAsync(a => a.CompanyId == dto.CompanyId && a.DriverUserId == userId && a.Status == ApplyStatus.Applied);
-    if (dup) return ApiResponse<JobApplication>.Fail("DUPLICATE", "Bạn đã ứng tuyển và đang chờ xử lý");
+    if (dup) return ApiResponse<JobApplication>.Fail("DUPLICATE", "You have already applied and are pending.");
 
     var alreadyHired = await _db.CompanyDriverRelations.AnyAsync(r => r.DriverUserId == userId);
-    if (alreadyHired) return ApiResponse<JobApplication>.Fail("ALREADY_EMPLOYED", "Bạn đã là tài xế của một công ty, không thể ứng tuyển nơi khác.");
+    if (alreadyHired) return ApiResponse<JobApplication>.Fail("ALREADY_EMPLOYED", "You are already employed by a company and cannot apply elsewhere.");
 
     var app = new JobApplication
     {
@@ -526,7 +532,6 @@ public class DriversController : ControllerBase
     await _db.SaveChangesAsync();
     return ApiResponse<JobApplication>.Ok(app);
   }
-
 
   [Authorize(Roles = "Driver")]
   [HttpGet("{userId}/applications")]
@@ -572,10 +577,10 @@ public class DriversController : ControllerBase
         .FirstOrDefaultAsync(a => a.Id == applicationId && a.DriverUserId == userId);
 
     if (app == null)
-      return ApiResponse<object>.Fail("NOT_FOUND", "Application không tồn tại");
+      return ApiResponse<object>.Fail("NOT_FOUND", "Application does not exist.");
 
     if (app.Status != ApplyStatus.Applied)
-      return ApiResponse<object>.Fail("INVALID_STATE", "Không thể huỷ application này");
+      return ApiResponse<object>.Fail("INVALID_STATE", "Cannot cancel this application.");
 
     app.Status = ApplyStatus.Cancelled;
     await _db.SaveChangesAsync();
@@ -583,9 +588,8 @@ public class DriversController : ControllerBase
     return ApiResponse<object>.Ok(new { applicationId = app.Id, status = app.Status });
   }
 
-
-
   // ========= Invitations =========
+
   [Authorize(Roles = "Driver")]
   [HttpGet("{userId}/invitations")]
   [SwaggerOperation(Summary = "List My Invitations")]
@@ -595,7 +599,6 @@ public class DriversController : ControllerBase
   {
     var p = await GetOwnedDriverAsync(userId);
     if (p == null) return Forbidden<PageResult<Invite>>();
-
 
     var q = _db.Invites.Where(i => i.DriverUserId == userId);
 
@@ -633,20 +636,20 @@ public class DriversController : ControllerBase
 
     var inv = await _db.Invites
       .FirstOrDefaultAsync(i => i.Id == inviteId && i.DriverUserId == userId);
-    if (inv == null) return ApiResponse<object>.Fail("NOT_FOUND", "Invite không tồn tại");
+    if (inv == null) return ApiResponse<object>.Fail("NOT_FOUND", "Invite does not exist.");
 
-    // giữ nguyên logic: chỉ xử lý khi Pending
+    // Keep logic: only process when Pending
     if (!string.Equals(inv.Status, "Pending", StringComparison.OrdinalIgnoreCase))
-      return ApiResponse<object>.Fail("INVALID_STATE", "Invite đã được xử lý");
+      return ApiResponse<object>.Fail("INVALID_STATE", "Invite has already been processed.");
 
-    // Transaction để mọi thay đổi đi cùng nhau
+    // Transaction so all changes are committed together
     await using var tx = await _db.Database.BeginTransactionAsync();
     try
     {
-      // 1) Accept lời mời
+      // 1) Accept the invite
       inv.Status = "Accepted";
 
-      // 2) Nếu chưa có quan hệ company-driver thì tạo
+      // 2) If relation company-driver doesn't exist, create it
       var exists = await _db.CompanyDriverRelations.AnyAsync(
         r => r.CompanyId == inv.CompanyId && r.DriverUserId == userId);
       if (!exists)
@@ -662,7 +665,7 @@ public class DriversController : ControllerBase
         });
       }
 
-      // 3) HỦY TẤT CẢ JobApplication đang Applied của driver này (mọi công ty)
+      // 3) CANCEL ALL JobApplications that are Applied for this driver (across all companies)
       var toCancel = await _db.JobApplications
         .Where(a => a.DriverUserId == userId && a.Status == ApplyStatus.Applied)
         .ToListAsync();
@@ -682,7 +685,6 @@ public class DriversController : ControllerBase
     }
   }
 
-
   [Authorize(Roles = "Driver")]
   [HttpPost("{userId}/invitations/{inviteId}/reject")]
   [SwaggerOperation(Summary = "Reject Invitation")]
@@ -693,16 +695,16 @@ public class DriversController : ControllerBase
     if (p == null) return Forbidden<object>();
 
     var inv = await _db.Invites.FirstOrDefaultAsync(i => i.Id == inviteId && i.DriverUserId == userId);
-    if (inv == null) return ApiResponse<object>.Fail("NOT_FOUND", "Invite không tồn tại");
-    if (inv.Status != "Pending") return ApiResponse<object>.Fail("INVALID_STATE", "Invite đã được xử lý");
+    if (inv == null) return ApiResponse<object>.Fail("NOT_FOUND", "Invite does not exist.");
+    if (inv.Status != "Pending") return ApiResponse<object>.Fail("INVALID_STATE", "Invite has already been processed.");
 
     inv.Status = "Rejected";
     await _db.SaveChangesAsync();
     return ApiResponse<object>.Ok(new { inviteId = inv.Id, status = inv.Status });
   }
 
-
   // ========= check employment status =========
+
   [Authorize(Roles = "Driver")]
   [HttpGet("{userId}/employment")]
   [SwaggerOperation(Summary = "Employment status of driver")]
@@ -721,20 +723,20 @@ public class DriversController : ControllerBase
     });
   }
 
-
   // PUBLIC API
+
   [AllowAnonymous]
   [HttpGet("{userId}/public")]
   [SwaggerOperation(Summary = "Get Driver Public Profile")]
   [ProducesResponseType(typeof(ApiResponse<DriverPublicProfileDto>), 200)]
   public async Task<ActionResult<ApiResponse<DriverPublicProfileDto>>> GetDriverPublicProfile([FromRoute] string userId)
   {
-    // 1) Hồ sơ tài xế
+    // 1) Driver profile
     var driver = await _db.DriverProfiles.FirstOrDefaultAsync(d => d.UserId == userId);
     if (driver == null)
-      return ApiResponse<DriverPublicProfileDto>.Fail("NOT_FOUND", "Driver không tồn tại");
+      return ApiResponse<DriverPublicProfileDto>.Fail("NOT_FOUND", "Driver does not exist.");
 
-    // 2) Công ty hiện đang thuê: lấy relation mới nhất
+    // 2) Current hired company: take the latest relation
     var latestRel = await _db.CompanyDriverRelations
       .Where(r => r.DriverUserId == userId)
       .OrderByDescending(r => r.CreatedAt)
@@ -757,7 +759,7 @@ public class DriversController : ControllerBase
       }
     }
 
-    // 3) Lịch sử làm việc (đơn giản: toàn bộ relations)
+    // 3) Employment history (simple: all relations)
     var history = await (from rel in _db.CompanyDriverRelations
                          join c in _db.Companies on rel.CompanyId equals c.Id
                          where rel.DriverUserId == userId
@@ -771,7 +773,7 @@ public class DriversController : ControllerBase
                            BaseSalaryCents = rel.BaseSalaryCents
                          }).ToListAsync();
 
-    // 4) Rating & Reviews: chưa có nguồn liên kết driver -> order/review => để trống
+    // 4) Rating & Reviews: no linked source yet -> empty
     var dto = new DriverPublicProfileDto
     {
       Driver = driver,

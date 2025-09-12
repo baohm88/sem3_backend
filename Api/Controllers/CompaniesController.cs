@@ -12,8 +12,6 @@ using System.Linq;
 using System.Text.Json;
 using System.Linq.Expressions;
 
-
-
 namespace Api.Controllers;
 
 [ApiController]
@@ -24,15 +22,19 @@ public class CompaniesController : ControllerBase
   private readonly AppDbContext _db;
   public CompaniesController(AppDbContext db) => _db = db;
 
-  // ===== Helper =====
+  // ===== Helpers =====
+
+  /// <summary>Resolve current user id from claims.</summary>
   private string? GetUserId() =>
       User.FindFirstValue(ClaimTypes.NameIdentifier) ??
       User.FindFirstValue(ClaimTypes.Name) ??
       User.FindFirstValue("sub");
 
+  /// <summary>Convenience Forbidden response.</summary>
   private ActionResult<ApiResponse<T>> Forbidden<T>() =>
-      ApiResponse<T>.Fail("FORBIDDEN", "Bạn không có quyền trên company này");
+      ApiResponse<T>.Fail("FORBIDDEN", "You don't have permission on this company.");
 
+  /// <summary>Get company by id owned by current user; null otherwise.</summary>
   private async Task<Company?> GetOwnedCompanyAsync(string companyId)
   {
     var uid = GetUserId();
@@ -41,6 +43,7 @@ public class CompaniesController : ControllerBase
     return c.OwnerUserId == uid ? c : null;
   }
 
+  /// <summary>Get the company of current user by OwnerUserId.</summary>
   private async Task<Company?> GetCompanyOfCurrentUserAsync()
   {
     var uid = GetUserId();
@@ -50,14 +53,14 @@ public class CompaniesController : ControllerBase
 
   private static string NewId() => Guid.NewGuid().ToString("N")[..24];
 
-  // ====== Helpers riêng cho Service (chuẩn hoá theo companyId + serviceId) ======
+  // ===== Helpers for Service (normalize by companyId + serviceId) =====
   private async Task<Service?> GetOwnedServiceAsync(string companyId, string serviceId)
   {
-    // service thuộc company?
+    // Is the service under this company?
     var svc = await _db.Services.FirstOrDefaultAsync(s => s.Id == serviceId && s.CompanyId == companyId);
     if (svc == null) return null;
 
-    // company có thuộc current user?
+    // Does the company belong to the current user?
     var owned = await GetOwnedCompanyAsync(companyId);
     return owned != null ? svc : null;
   }
@@ -133,7 +136,7 @@ public class CompaniesController : ControllerBase
       {
         var normalized = UrlHelper.TryNormalizeUrl(dto.ImgUrl);
         if (normalized == null)
-          return ApiResponse<Company>.Fail("IMG_URL_INVALID", "Ảnh đại diện không phải URL hợp lệ (http/https).");
+          return ApiResponse<Company>.Fail("IMG_URL_INVALID", "Avatar is not a valid URL (http/https).");
         p.ImgUrl = normalized;
       }
       p.UpdatedAt = DateTime.UtcNow;
@@ -162,19 +165,19 @@ public class CompaniesController : ControllerBase
     if (minRating.HasValue) q = q.Where(c => c.Rating >= minRating.Value);
     if (maxRating.HasValue) q = q.Where(c => c.Rating <= maxRating.Value);
 
-    // map rank: Premium(3) > Basic(2) > Free/khác(1)
+    // Ranking rule: Premium(3) > Basic(2) > Free/others(1)
     Expression<Func<Company, int>> membershipRank = c =>
       c.Membership == "Premium" ? 3 :
       c.Membership == "Basic" ? 2 : 1;
 
-    // parsing sort
+    // Parse sort
     var s = (sort ?? "name:asc").Split(':');
     var field = s[0];
     var dir = s.Length > 1 ? s[1] : "asc";
 
-    // Luật:
-    // - Nếu sort theo name/rating: luôn ưu tiên membershipRank DESC trước, sau đó mới theo field + dir.
-    // - Nếu sort theo membership: tôn trọng dir (asc => Free…Premium, desc => Premium…Free)
+    // Rules:
+    // - If sorting by name/rating: always prioritize membershipRank DESC, then field + dir.
+    // - If sorting by membership: honor dir (asc => Free…Premium, desc => Premium…Free).
     q = (field, dir) switch
     {
       ("name", "desc") => q.OrderByDescending(membershipRank).ThenByDescending(c => c.Name),
@@ -183,11 +186,11 @@ public class CompaniesController : ControllerBase
       ("rating", "desc") => q.OrderByDescending(membershipRank).ThenByDescending(c => c.Rating),
       ("rating", _) => q.OrderByDescending(membershipRank).ThenBy(c => c.Rating),
 
-      // sort membership thuần theo dir
+      // pure membership sort by dir
       ("membership", "desc") => q.OrderByDescending(membershipRank),
       ("membership", _) => q.OrderBy(membershipRank),
 
-      // mặc định: name asc với ưu tiên membership
+      // default: name asc with membership priority
       _ => q.OrderByDescending(membershipRank).ThenBy(c => c.Name)
     };
 
@@ -212,7 +215,7 @@ public class CompaniesController : ControllerBase
   public async Task<ActionResult<ApiResponse<Company>>> GetCompanyById([FromRoute] string id)
   {
     var c = await _db.Companies.FirstOrDefaultAsync(x => x.Id == id);
-    if (c == null) return ApiResponse<Company>.Fail("NOT_FOUND", "Company không tồn tại");
+    if (c == null) return ApiResponse<Company>.Fail("NOT_FOUND", "Company does not exist.");
     return ApiResponse<Company>.Ok(c);
   }
 
@@ -258,7 +261,7 @@ public class CompaniesController : ControllerBase
     if (minRating.HasValue)
       query = query.Where(x => x.Rating >= minRating.Value);
 
-    // sort
+    // Sorting
     if (!string.IsNullOrWhiteSpace(sort))
     {
       var s = sort.Split(':'); var field = s[0]; var dir = s.Length > 1 ? s[1] : "desc";
@@ -289,6 +292,7 @@ public class CompaniesController : ControllerBase
   }
 
   // ========= SERVICES =========
+
   // CREATE
   [Authorize(Roles = "Company")]
   [HttpPost("{companyId}/services")]
@@ -301,19 +305,19 @@ public class CompaniesController : ControllerBase
     var company = await GetOwnedCompanyAsync(companyId);
     if (company == null) return Forbidden<Service>();
 
-    // Validate
+    // Validation
     if (string.IsNullOrWhiteSpace(dto.Title))
-      return ApiResponse<Service>.Fail("VALIDATION", "Title bắt buộc");
+      return ApiResponse<Service>.Fail("VALIDATION", "Title is required.");
     if (dto.PriceCents <= 0)
-      return ApiResponse<Service>.Fail("VALIDATION", "PriceCents phải > 0");
+      return ApiResponse<Service>.Fail("VALIDATION", "PriceCents must be > 0.");
 
-    // Normalize ImgUrl (nếu có)
+    // Normalize ImgUrl (if any)
     string? normalizedImgUrl = null;
     if (!string.IsNullOrWhiteSpace(dto.ImgUrl))
     {
       normalizedImgUrl = UrlHelper.TryNormalizeUrl(dto.ImgUrl);
       if (normalizedImgUrl == null)
-        return ApiResponse<Service>.Fail("IMG_URL_INVALID", "ImgUrl không hợp lệ (http/https).");
+        return ApiResponse<Service>.Fail("IMG_URL_INVALID", "ImgUrl is not valid (http/https).");
     }
 
     var now = DateTime.UtcNow;
@@ -324,7 +328,7 @@ public class CompaniesController : ControllerBase
       CompanyId = company.Id,
       Title = dto.Title!.Trim(),
       Description = dto.Description,
-      ImgUrl = normalizedImgUrl,               // <-- gán tại đây
+      ImgUrl = normalizedImgUrl,               // set here
       PriceCents = dto.PriceCents,
       IsActive = dto.IsActive ?? true,
       CreatedAt = now,
@@ -336,8 +340,7 @@ public class CompaniesController : ControllerBase
     return ApiResponse<Service>.Ok(svc);
   }
 
-
-  // LIST (của chính company hiện tại)
+  // LIST (for current company)
   [Authorize(Roles = "Company")]
   [HttpGet("{companyId}/services")]
   [SwaggerOperation(Summary = "List Company Services")]
@@ -389,13 +392,13 @@ public class CompaniesController : ControllerBase
     });
   }
 
-  [AllowAnonymous] // hoặc [Authorize] nếu bạn muốn yêu cầu đăng nhập
+  [AllowAnonymous] // or [Authorize] if you want to require login
   [HttpGet("{companyId}/services/public")]
   [SwaggerOperation(Summary = "Public: List Active Services of a Company")]
   [ProducesResponseType(typeof(ApiResponse<PageResult<Service>>), 200)]
   public async Task<ActionResult<ApiResponse<PageResult<Service>>>> ListServicesPublic(
     [FromRoute] string companyId,
-    [FromQuery] bool? isActive = true, // default: chỉ lấy active
+    [FromQuery] bool? isActive = true, // default: only active
     [FromQuery] string? q = null,
     [FromQuery] int page = 1,
     [FromQuery] int size = 10,
@@ -469,19 +472,19 @@ public class CompaniesController : ControllerBase
     if (dto.Title is not null) svc.Title = dto.Title;
     if (dto.Description is not null) svc.Description = dto.Description;
 
-    // NEW: ImgUrl — cho phép xóa ("" => null) hoặc set mới (cần là http/https hợp lệ)
+    // ImgUrl — allow clearing ("" => null) or setting new (must be valid http/https)
     if (dto.ImgUrl is not null)
     {
       if (string.IsNullOrWhiteSpace(dto.ImgUrl))
       {
-        // xóa ảnh
+        // remove image
         svc.ImgUrl = null;
       }
       else
       {
         var normalized = UrlHelper.TryNormalizeUrl(dto.ImgUrl);
         if (normalized == null)
-          return ApiResponse<Service>.Fail("IMG_URL_INVALID", "ImgUrl không hợp lệ (http/https).");
+          return ApiResponse<Service>.Fail("IMG_URL_INVALID", "ImgUrl is not valid (http/https).");
         svc.ImgUrl = normalized;
       }
     }
@@ -489,7 +492,7 @@ public class CompaniesController : ControllerBase
     if (dto.PriceCents.HasValue)
     {
       if (dto.PriceCents.Value <= 0)
-        return ApiResponse<Service>.Fail("VALIDATION", "PriceCents phải > 0");
+        return ApiResponse<Service>.Fail("VALIDATION", "PriceCents must be > 0.");
       svc.PriceCents = dto.PriceCents.Value;
     }
 
@@ -499,7 +502,6 @@ public class CompaniesController : ControllerBase
     await _db.SaveChangesAsync();
     return ApiResponse<Service>.Ok(svc);
   }
-
 
   // PAUSE
   [Authorize(Roles = "Company")]
@@ -567,7 +569,6 @@ public class CompaniesController : ControllerBase
     return ApiResponse<Wallet>.Ok(wallet);
   }
 
-
   [Authorize(Roles = "Company")]
   [HttpPost("{id}/wallet/withdraw")]
   [SwaggerOperation(Summary = "Withdraw from Company Wallet")]
@@ -580,15 +581,15 @@ public class CompaniesController : ControllerBase
     if (company == null) return Forbidden<object>();
 
     if (dto.AmountCents <= 0)
-      return ApiResponse<object>.Fail("VALIDATION", "AmountCents phải > 0");
+      return ApiResponse<object>.Fail("VALIDATION", "AmountCents must be > 0.");
 
     var wallet = await _db.Wallets.FirstOrDefaultAsync(
         w => w.OwnerType == "Company" && w.OwnerRefId == id);
     if (wallet == null)
-      return ApiResponse<object>.Fail("NO_WALLET", "Company chưa có ví");
+      return ApiResponse<object>.Fail("NO_WALLET", "Company does not have a wallet.");
 
     if (wallet.BalanceCents < dto.AmountCents)
-      return ApiResponse<object>.Fail("INSUFFICIENT_FUNDS", "Số dư không đủ");
+      return ApiResponse<object>.Fail("INSUFFICIENT_FUNDS", "Insufficient balance.");
 
     // Idempotency
     if (!string.IsNullOrWhiteSpace(dto.IdempotencyKey))
@@ -597,7 +598,7 @@ public class CompaniesController : ControllerBase
       if (exists) return ApiResponse<object>.Ok(new { balance = wallet.BalanceCents });
     }
 
-    // Trừ tiền
+    // Deduct
     wallet.BalanceCents -= dto.AmountCents;
     wallet.UpdatedAt = DateTime.UtcNow;
 
@@ -638,7 +639,7 @@ public class CompaniesController : ControllerBase
   {
     var company = await GetOwnedCompanyAsync(id);
     if (company == null) return Forbidden<object>();
-    if (dto.AmountCents <= 0) return ApiResponse<object>.Fail("VALIDATION", "AmountCents phải > 0");
+    if (dto.AmountCents <= 0) return ApiResponse<object>.Fail("VALIDATION", "AmountCents must be > 0.");
 
     var wallet = await _db.Wallets.FirstOrDefaultAsync(w => w.OwnerType == "Company" && w.OwnerRefId == id);
     if (wallet == null)
@@ -725,7 +726,6 @@ public class CompaniesController : ControllerBase
     });
   }
 
-
   // ========= Pay Salary =========
   [Authorize(Roles = "Company")]
   [HttpPost("{id}/pay-salary")]
@@ -736,19 +736,19 @@ public class CompaniesController : ControllerBase
   {
     var company = await GetOwnedCompanyAsync(id);
     if (company == null) return Forbidden<object>();
-    if (dto.AmountCents <= 0) return ApiResponse<object>.Fail("VALIDATION", "AmountCents phải > 0");
+    if (dto.AmountCents <= 0) return ApiResponse<object>.Fail("VALIDATION", "AmountCents must be > 0.");
 
-    // Kiểm tra quan hệ employment
+    // Check employment relation
     var employed = await _db.CompanyDriverRelations
       .AnyAsync(r => r.CompanyId == id && r.DriverUserId == dto.DriverUserId);
-    if (!employed) return ApiResponse<object>.Fail("NOT_EMPLOYED", "Driver chưa/không làm việc cho công ty.");
+    if (!employed) return ApiResponse<object>.Fail("NOT_EMPLOYED", "Driver is not employed by the company.");
 
     var period = !string.IsNullOrWhiteSpace(dto.Period)
       ? dto.Period!.Trim()
       : DateTime.UtcNow.ToString("yyyy-MM");
 
     var companyWallet = await _db.Wallets.FirstOrDefaultAsync(w => w.OwnerType == "Company" && w.OwnerRefId == id);
-    if (companyWallet == null) return ApiResponse<object>.Fail("NO_WALLET", "Company chưa có ví");
+    if (companyWallet == null) return ApiResponse<object>.Fail("NO_WALLET", "Company does not have a wallet.");
 
     var driverWallet = await _db.Wallets.FirstOrDefaultAsync(w => w.OwnerType == "Driver" && w.OwnerRefId == dto.DriverUserId);
     if (driverWallet == null)
@@ -767,9 +767,9 @@ public class CompaniesController : ControllerBase
     }
 
     if (companyWallet.BalanceCents < dto.AmountCents)
-      return ApiResponse<object>.Fail("INSUFFICIENT_FUNDS", "Số dư không đủ");
+      return ApiResponse<object>.Fail("INSUFFICIENT_FUNDS", "Insufficient balance.");
 
-    // Chuẩn hoá idempotency key
+    // Normalize idempotency key
     var idem = string.IsNullOrWhiteSpace(dto.IdempotencyKey)
       ? $"salary:{id}:{dto.DriverUserId}:{period}:{dto.AmountCents}"
       : dto.IdempotencyKey!.Trim();
@@ -806,7 +806,7 @@ public class CompaniesController : ControllerBase
         IdempotencyKey = idem,
         CreatedAt = DateTime.UtcNow,
         Type = TxType.PaySalary,
-        RefId = dto.DriverUserId,   // giữ nguyên cách bạn đang dùng
+        RefId = dto.DriverUserId,   // keep current usage
         MetaJson = JsonSerializer.Serialize(meta)
       });
 
@@ -823,10 +823,9 @@ public class CompaniesController : ControllerBase
     catch
     {
       await txScope.RollbackAsync();
-      return ApiResponse<object>.Fail("INTERNAL_ERROR", "Payout failed");
+      return ApiResponse<object>.Fail("INTERNAL_ERROR", "Payout failed.");
     }
   }
-
 
   // ========= Pay Membership =========
   [Authorize(Roles = "Company")]
@@ -837,12 +836,12 @@ public class CompaniesController : ControllerBase
   {
     var company = await GetOwnedCompanyAsync(id);
     if (company == null) return Forbidden<object>();
-    if (dto.AmountCents <= 0) return ApiResponse<object>.Fail("VALIDATION", "AmountCents phải > 0");
-    if (string.IsNullOrWhiteSpace(dto.Plan)) return ApiResponse<object>.Fail("VALIDATION", "Plan bắt buộc");
+    if (dto.AmountCents <= 0) return ApiResponse<object>.Fail("VALIDATION", "AmountCents must be > 0.");
+    if (string.IsNullOrWhiteSpace(dto.Plan)) return ApiResponse<object>.Fail("VALIDATION", "Plan is required.");
 
     var wallet = await _db.Wallets.FirstOrDefaultAsync(w => w.OwnerType == "Company" && w.OwnerRefId == id);
     if (wallet == null || wallet.BalanceCents < dto.AmountCents)
-      return ApiResponse<object>.Fail("INSUFFICIENT_FUNDS", "Số dư không đủ");
+      return ApiResponse<object>.Fail("INSUFFICIENT_FUNDS", "Insufficient balance.");
 
     wallet.BalanceCents -= dto.AmountCents;
     wallet.UpdatedAt = DateTime.UtcNow;
@@ -915,8 +914,8 @@ public class CompaniesController : ControllerBase
     if (company == null) return Forbidden<object>();
 
     var app = await _db.JobApplications.FirstOrDefaultAsync(a => a.Id == appId && a.CompanyId == id);
-    if (app == null) return ApiResponse<object>.Fail("NOT_FOUND", "Application không tồn tại");
-    if (app.Status != ApplyStatus.Applied) return ApiResponse<object>.Fail("INVALID_STATE", "Chỉ duyệt khi trạng thái Applied");
+    if (app == null) return ApiResponse<object>.Fail("NOT_FOUND", "Application does not exist.");
+    if (app.Status != ApplyStatus.Applied) return ApiResponse<object>.Fail("INVALID_STATE", "Only allowed when status is Applied.");
 
     app.Status = ApplyStatus.Accepted;
 
@@ -948,8 +947,8 @@ public class CompaniesController : ControllerBase
     if (company == null) return Forbidden<object>();
 
     var app = await _db.JobApplications.FirstOrDefaultAsync(a => a.Id == appId && a.CompanyId == id);
-    if (app == null) return ApiResponse<object>.Fail("NOT_FOUND", "Application không tồn tại");
-    if (app.Status != ApplyStatus.Applied) return ApiResponse<object>.Fail("INVALID_STATE", "Chỉ từ chối khi trạng thái Applied");
+    if (app == null) return ApiResponse<object>.Fail("NOT_FOUND", "Application does not exist.");
+    if (app.Status != ApplyStatus.Applied) return ApiResponse<object>.Fail("INVALID_STATE", "Only allowed when status is Applied.");
 
     app.Status = ApplyStatus.Rejected;
     await _db.SaveChangesAsync();
@@ -969,13 +968,13 @@ public class CompaniesController : ControllerBase
     if (company == null) return Forbidden<Invite>();
 
     if (string.IsNullOrWhiteSpace(dto.DriverUserId))
-      return ApiResponse<Invite>.Fail("VALIDATION", "DriverUserId bắt buộc");
+      return ApiResponse<Invite>.Fail("VALIDATION", "DriverUserId is required.");
     if (dto.BaseSalaryCents < 0)
-      return ApiResponse<Invite>.Fail("VALIDATION", "BaseSalaryCents không âm");
+      return ApiResponse<Invite>.Fail("VALIDATION", "BaseSalaryCents must not be negative.");
 
     var now = DateTime.UtcNow;
 
-    // Lấy invite gần nhất giữa company-driver
+    // Get the latest invite between this company and driver
     var latest = await _db.Invites
       .Where(i => i.CompanyId == id && i.DriverUserId == dto.DriverUserId)
       .OrderByDescending(i => i.CreatedAt)
@@ -983,32 +982,32 @@ public class CompaniesController : ControllerBase
 
     if (latest != null)
     {
-      // Nếu đang Pending & chưa hết hạn => idempotent: trả lại invite cũ
+      // If Pending & not expired => idempotent: return existing invite
       if (latest.Status == "Pending")
       {
         var isExpired = latest.ExpiresAt.HasValue && latest.ExpiresAt.Value <= now;
         if (!isExpired)
         {
-          // có thể cân nhắc update lương/hạn mời nếu muốn "refresh" (tùy policy)
+          // optionally refresh salary/expiry if desired (policy-controlled)
           return ApiResponse<Invite>.Ok(latest);
         }
 
-        // đã hết hạn => auto mark Expired
+        // expired => auto mark as Expired
         latest.Status = "Expired";
         await _db.SaveChangesAsync();
       }
 
-      // Nếu đã Accepted rồi thì không mời lại
+      // If already Accepted, do not invite again
       if (latest.Status == "Accepted")
       {
         return ApiResponse<Invite>.Fail(
           "ALREADY_ACCEPTED",
-          "Tài xế đã chấp nhận lời mời trước đó.");
+          "Driver has already accepted a previous invitation.");
       }
-      // Nếu Rejected/Cancelled/Expired: cho phép tạo lời mời mới
+      // If Rejected/Cancelled/Expired: allow new invite
     }
 
-    // Tạo invite mới
+    // Create new invite
     var inv = new Invite
     {
       Id = NewId(),
@@ -1026,7 +1025,6 @@ public class CompaniesController : ControllerBase
     return ApiResponse<Invite>.Ok(inv);
   }
 
-
   // ========= Invitations: Cancel =========
   [Authorize(Roles = "Company")]
   [HttpPost("{id}/invitations/{inviteId}/cancel")]
@@ -1036,24 +1034,23 @@ public class CompaniesController : ControllerBase
     [FromRoute] string id,
     [FromRoute] string inviteId)
   {
-    // Chỉ chủ company mới được thao tác
+    // Only company owner can act
     var company = await GetOwnedCompanyAsync(id);
     if (company == null) return Forbidden<object>();
 
-    // Tìm invite thuộc company
+    // Find invite under this company
     var inv = await _db.Invites.FirstOrDefaultAsync(i => i.Id == inviteId && i.CompanyId == id);
-    if (inv == null) return ApiResponse<object>.Fail("NOT_FOUND", "Invite không tồn tại");
+    if (inv == null) return ApiResponse<object>.Fail("NOT_FOUND", "Invite does not exist.");
 
-    // Chỉ cho phép thu hồi khi đang ở trạng thái pending
+    // Allow cancellation only when invite is Pending
     if (!string.Equals(inv.Status, "Pending", StringComparison.OrdinalIgnoreCase))
-      return ApiResponse<object>.Fail("INVALID_STATE", "Chỉ thu hồi được khi invite đang ở trạng thái Pending");
+      return ApiResponse<object>.Fail("INVALID_STATE", "Can only cancel an invite in Pending state.");
 
     inv.Status = "Cancelled";
     await _db.SaveChangesAsync();
 
     return ApiResponse<object>.Ok(new { inviteId = inv.Id, status = inv.Status });
   }
-
 
   [Authorize(Roles = "Company")]
   [HttpGet("{id}/invitations")]
@@ -1070,7 +1067,7 @@ public class CompaniesController : ControllerBase
 
     var q = _db.Invites.Where(i => i.CompanyId == id);
 
-    // filter theo status nếu có
+    // filter by status if provided
     if (!string.IsNullOrWhiteSpace(status))
     {
       q = q.Where(i => i.Status == status);
@@ -1097,25 +1094,25 @@ public class CompaniesController : ControllerBase
 
   [Authorize(Roles = "Company")]
   [HttpPost("orders/{orderId}/confirm")]
-  [SwaggerOperation(Summary = "Confirm Order (Company)", Description = "Company xác nhận nhận đơn — chuyển trạng thái từ Pending -> InProgress.")]
+  [SwaggerOperation(Summary = "Confirm Order (Company)", Description = "Company confirms the order — change status from Pending -> InProgress.")]
   [ProducesResponseType(typeof(ApiResponse<Order>), 200)]
   public async Task<ActionResult<ApiResponse<Order>>> ConfirmOrder([FromRoute] string orderId)
   {
     var order = await _db.Orders.FirstOrDefaultAsync(o => o.Id == orderId);
-    if (order == null) return ApiResponse<Order>.Fail("NOT_FOUND", "Order không tồn tại");
+    if (order == null) return ApiResponse<Order>.Fail("NOT_FOUND", "Order does not exist.");
 
-    // Chỉ cho phép nếu company hiện tại là owner của order
+    // Only if current company is the owner of the order
     var owned = await GetOwnedCompanyAsync(order.CompanyId);
     if (owned == null) return Forbidden<Order>();
 
     if (order.Status == OrderStatus.Completed)
-      return ApiResponse<Order>.Fail("INVALID_STATE", "Order đã hoàn tất");
+      return ApiResponse<Order>.Fail("INVALID_STATE", "Order is already completed.");
 
     if (order.Status == OrderStatus.Cancelled)
-      return ApiResponse<Order>.Fail("INVALID_STATE", "Order đã bị hủy");
+      return ApiResponse<Order>.Fail("INVALID_STATE", "Order has been canceled.");
 
     if (order.Status != OrderStatus.Pending)
-      return ApiResponse<Order>.Fail("INVALID_STATE", "Chỉ xác nhận được khi order đang ở trạng thái Pending");
+      return ApiResponse<Order>.Fail("INVALID_STATE", "Only allowed when order is Pending.");
 
     order.Status = OrderStatus.InProgress;
     order.UpdatedAt = DateTime.UtcNow;
@@ -1128,28 +1125,28 @@ public class CompaniesController : ControllerBase
   [HttpPost("orders/{orderId}/complete")]
   [SwaggerOperation(
       Summary = "Complete Order (Company)",
-      Description = "Company hoàn tất đơn — chuyển InProgress -> Completed và **thu tiền** từ ví Rider sang ví Company (mock payment)."
+      Description = "Company completes the order — InProgress -> Completed and **collects payment** from Rider wallet to Company wallet (mock payment)."
   )]
   [ProducesResponseType(typeof(ApiResponse<object>), 200)]
   public async Task<ActionResult<ApiResponse<object>>> CompleteOrder([FromRoute] string orderId)
   {
     var order = await _db.Orders.FirstOrDefaultAsync(o => o.Id == orderId);
-    if (order == null) return ApiResponse<object>.Fail("NOT_FOUND", "Order không tồn tại");
+    if (order == null) return ApiResponse<object>.Fail("NOT_FOUND", "Order does not exist.");
 
-    // Chỉ cho phép nếu company hiện tại là owner của order
+    // Only if current company is the owner of the order
     var company = await GetOwnedCompanyAsync(order.CompanyId);
     if (company == null) return Forbidden<object>();
 
     if (order.Status == OrderStatus.Cancelled)
-      return ApiResponse<object>.Fail("INVALID_STATE", "Order đã bị hủy");
+      return ApiResponse<object>.Fail("INVALID_STATE", "Order has been canceled.");
 
     if (order.Status == OrderStatus.Completed)
-      return ApiResponse<object>.Ok(new { message = "Order đã hoàn tất trước đó" });
+      return ApiResponse<object>.Ok(new { message = "Order was already completed." });
 
     if (order.Status != OrderStatus.InProgress && order.Status != OrderStatus.Pending)
-      return ApiResponse<object>.Fail("INVALID_STATE", "Chỉ hoàn tất được khi order ở trạng thái InProgress hoặc Pending");
+      return ApiResponse<object>.Fail("INVALID_STATE", "Only allowed when order is InProgress or Pending.");
 
-    // Ví Rider
+    // Rider wallet
     var riderWallet = await _db.Wallets.FirstOrDefaultAsync(w => w.OwnerType == "Rider" && w.OwnerRefId == order.RiderUserId);
     if (riderWallet == null)
     {
@@ -1163,10 +1160,10 @@ public class CompaniesController : ControllerBase
         UpdatedAt = DateTime.UtcNow
       };
       _db.Wallets.Add(riderWallet);
-      // rider mới tạo ví chắc chắn không đủ tiền
+      // A newly created rider wallet will not have enough funds
     }
 
-    // Ví Company
+    // Company wallet
     var companyWallet = await _db.Wallets.FirstOrDefaultAsync(w => w.OwnerType == "Company" && w.OwnerRefId == company.Id);
     if (companyWallet == null)
     {
@@ -1182,12 +1179,12 @@ public class CompaniesController : ControllerBase
       _db.Wallets.Add(companyWallet);
     }
 
-    // Kiểm tra số dư Rider
+    // Check rider balance
     var amount = order.PriceCents;
     if (riderWallet.BalanceCents < amount)
-      return ApiResponse<object>.Fail("INSUFFICIENT_FUNDS", "Số dư ví Rider không đủ để thanh toán order");
+      return ApiResponse<object>.Fail("INSUFFICIENT_FUNDS", "Rider wallet balance is insufficient to pay for the order.");
 
-    // Chuyển tiền (mock payment)
+    // Transfer (mock payment)
     riderWallet.BalanceCents -= amount;
     riderWallet.UpdatedAt = DateTime.UtcNow;
 
@@ -1209,7 +1206,7 @@ public class CompaniesController : ControllerBase
     };
     _db.Transactions.Add(tx);
 
-    // Cập nhật trạng thái đơn
+    // Update order status
     order.Status = OrderStatus.Completed;
     order.UpdatedAt = DateTime.UtcNow;
 
@@ -1225,7 +1222,6 @@ public class CompaniesController : ControllerBase
     });
   }
 
-
   // PUBLIC APIs
 
   [AllowAnonymous]
@@ -1233,12 +1229,12 @@ public class CompaniesController : ControllerBase
   [SwaggerOperation(Summary = "Public: List Services of all companies (with role-aware filters)")]
   [ProducesResponseType(typeof(ApiResponse<PageResult<Service>>), 200)]
   public async Task<ActionResult<ApiResponse<PageResult<Service>>>> ListServicesAllCompanies(
-  [FromQuery] bool? isActive = true,                  // lọc service.IsActive (mặc định true)
+  [FromQuery] bool? isActive = true,                  // filter service.IsActive (default true)
   [FromQuery] string? q = null,
   [FromQuery] int page = 1,
   [FromQuery] int size = 10,
-  [FromQuery] string? sort = null,                    // nếu null/empty => ưu tiên Premium→Basic→Free + random
-  [FromQuery] bool? companyIsActive = null            // Admin có thể xem tất cả hoặc lọc; non-admin mặc định true
+  [FromQuery] string? sort = null,                    // if null/empty => prioritize Premium→Basic→Free + random in group
+  [FromQuery] bool? companyIsActive = null            // Admin can see all or filter; non-admin default true
 )
   {
     var baseQuery =
@@ -1250,7 +1246,7 @@ public class CompaniesController : ControllerBase
     if (isActive.HasValue)
       baseQuery = baseQuery.Where(x => x.S.IsActive == isActive.Value);
 
-    // search theo service
+    // search against service
     if (!string.IsNullOrWhiteSpace(q))
       baseQuery = baseQuery.Where(x =>
         x.S.Title.Contains(q) ||
@@ -1265,11 +1261,11 @@ public class CompaniesController : ControllerBase
     }
     else
     {
-      var onlyActiveCompanies = companyIsActive ?? true; // mặc định true cho non-admin
+      var onlyActiveCompanies = companyIsActive ?? true; // default true for non-admin
       baseQuery = baseQuery.Where(x => x.C.IsActive == onlyActiveCompanies);
     }
 
-    // gắn rank membership
+    // attach membership rank
     var ranked = baseQuery.Select(x => new
     {
       x.S,
@@ -1281,7 +1277,7 @@ public class CompaniesController : ControllerBase
     // sort
     if (string.IsNullOrWhiteSpace(sort))
     {
-      // DEFAULT: ưu tiên rank, random trong nhóm
+      // DEFAULT: prioritize rank, random within group
       ranked = ranked
         .OrderByDescending(x => x.MembershipRank)
         .ThenBy(_ => EF.Functions.Random());
@@ -1308,7 +1304,7 @@ public class CompaniesController : ControllerBase
       };
     }
 
-    // chỉ còn Service để phân trang
+    // project to Service for paging
     var qServices = ranked.Select(x => x.S);
 
     var total = await qServices.CountAsync();
@@ -1328,7 +1324,6 @@ public class CompaniesController : ControllerBase
       items = items
     });
   }
-  
 
   [AllowAnonymous]
   [HttpGet("{companyId}/public")]
@@ -1347,13 +1342,13 @@ public class CompaniesController : ControllerBase
       .FirstOrDefaultAsync(c => c.Id == companyId);
 
     if (company == null)
-      return ApiResponse<CompanyPublicDto>.Fail("NOT_FOUND", "Company không tồn tại");
+      return ApiResponse<CompanyPublicDto>.Fail("NOT_FOUND", "Company does not exist.");
 
-    // query chỉ lấy services đang active của công ty
+    // query only active services of the company
     IQueryable<Service> svcQuery = _db.Services.AsNoTracking()
       .Where(s => s.CompanyId == companyId && s.IsActive);
 
-    // sort dịch vụ
+    // sort services
     if (!string.IsNullOrWhiteSpace(sort))
     {
       var s = sort.Split(':');
@@ -1384,7 +1379,7 @@ public class CompaniesController : ControllerBase
       .Take(size)
       .ToListAsync();
 
-    // số tài xế đã có quan hệ với công ty (không lọc active)
+    // number of drivers having relation with the company (not filtering active)
     var driversCount = await _db.CompanyDriverRelations
       .AsNoTracking()
       .CountAsync(r => r.CompanyId == companyId);
@@ -1397,7 +1392,7 @@ public class CompaniesController : ControllerBase
       DriversCount = driversCount,
       Services = services,
 
-      // metadata (FE có thể bỏ qua)
+      // metadata (FE may ignore)
       Page = page,
       Size = size,
       TotalItems = totalActive,
@@ -1406,7 +1401,4 @@ public class CompaniesController : ControllerBase
 
     return ApiResponse<CompanyPublicDto>.Ok(dto);
   }
-
-
-
 }

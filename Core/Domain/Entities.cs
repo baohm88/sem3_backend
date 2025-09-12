@@ -4,6 +4,7 @@ public enum UserRole { Admin, Company, Driver, Rider }
 public enum ApplyStatus { Applied, Accepted, Rejected, Expired, Cancelled }
 public enum OrderStatus { Pending, InProgress, Completed, Cancelled }
 public enum TxStatus { Pending, Completed, Failed }
+
 public enum TxType : byte
 {
   Topup = 0,
@@ -36,8 +37,8 @@ public class Company
   public string Membership { get; set; } = "Free";
   public DateTime? MembershipExpiresAt { get; set; }
   public bool IsActive { get; set; } = true;
-  public DateTime CreatedAt { get; set; } = DateTime.UtcNow;   // bổ sung để khớp schema
-  public DateTime UpdatedAt { get; set; } = DateTime.UtcNow;   // bổ sung để khớp schema
+  public DateTime CreatedAt { get; set; } = DateTime.UtcNow;   // added to match schema
+  public DateTime UpdatedAt { get; set; } = DateTime.UtcNow;   // added to match schema
 }
 
 public class DriverProfile
@@ -52,8 +53,8 @@ public class DriverProfile
   public string? Skills { get; set; }              // JSON string
   public string? Location { get; set; }
   public bool IsAvailable { get; set; } = true;
-  public DateTime CreatedAt { get; set; } = DateTime.UtcNow;   // bổ sung
-  public DateTime UpdatedAt { get; set; } = DateTime.UtcNow;   // bổ sung
+  public DateTime CreatedAt { get; set; } = DateTime.UtcNow;   // added
+  public DateTime UpdatedAt { get; set; } = DateTime.UtcNow;   // added
 }
 
 public class RiderProfile
@@ -63,8 +64,8 @@ public class RiderProfile
   public string FullName { get; set; } = default!;
   public string? Phone { get; set; }
   public string? ImgUrl { get; set; }              // avatar
-  public DateTime CreatedAt { get; set; } = DateTime.UtcNow;   // bổ sung
-  public DateTime UpdatedAt { get; set; } = DateTime.UtcNow;   // bổ sung
+  public DateTime CreatedAt { get; set; } = DateTime.UtcNow;   // added
+  public DateTime UpdatedAt { get; set; } = DateTime.UtcNow;   // added
 }
 
 public class Service
@@ -76,8 +77,8 @@ public class Service
   public string? ImgUrl { get; set; }
   public int PriceCents { get; set; }
   public bool IsActive { get; set; } = true;
-  public DateTime CreatedAt { get; set; } = DateTime.UtcNow;   // bổ sung
-  public DateTime UpdatedAt { get; set; } = DateTime.UtcNow;   // bổ sung
+  public DateTime CreatedAt { get; set; } = DateTime.UtcNow;   // added
+  public DateTime UpdatedAt { get; set; } = DateTime.UtcNow;   // added
 }
 
 public class Advertisement
@@ -165,7 +166,7 @@ public class Transaction
   public TxType Type { get; set; } = TxType.Topup;
   public string? RefId { get; set; }
 
-  // NEW: JSON metadata, nhớ serialize đúng JSON
+  // NEW: JSON metadata; make sure to serialize valid JSON
   public string? MetaJson { get; set; }
   public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
 }

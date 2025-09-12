@@ -21,32 +21,39 @@ public class AuthController : ControllerBase
 {
     private readonly AppDbContext _db;
     private readonly IConfiguration _config;
+
     public AuthController(AppDbContext db, IConfiguration config)
     {
         _db = db;
         _config = config;
     }
 
+    /// <summary>
+    /// Register a user with email and role; responds with OTP sent notice (mocked).
+    /// </summary>
     [AllowAnonymous]
     [HttpPost("register")]
     [Consumes("application/json")]
-    [SwaggerOperation(Summary = "Register", Description = "Đăng ký email + role, trả về thông báo gửi OTP (mock: 123456).")]
+    [SwaggerOperation(
+        Summary = "Register",
+        Description = "Register with email + role; returns notice that OTP is sent (mock: 123456)."
+    )]
     public async Task<ActionResult<ApiResponse<object>>> Register([FromBody] RegisterDto dto)
     {
         // 1) Normalize
         var email = (dto.Email ?? "").Trim().ToLowerInvariant();
 
-        // 2) Validate email kỹ: đúng RFC cơ bản & có dấu chấm trong domain
+        // 2) Strict email validation: basic RFC check & requires a dot in the domain
         if (!IsValidEmail(email))
-            return ApiResponse<object>.Fail("EMAIL_INVALID", "Email không hợp lệ (cần dạng name@domain.tld).");
+            return ApiResponse<object>.Fail("EMAIL_INVALID", "Invalid email (expected name@domain.tld).");
 
         // 3) Validate password
         if (string.IsNullOrWhiteSpace(dto.Password) || dto.Password.Length < 6)
-            return ApiResponse<object>.Fail("PASSWORD_WEAK", "Mật khẩu tối thiểu 6 ký tự.");
+            return ApiResponse<object>.Fail("PASSWORD_WEAK", "Password must be at least 6 characters.");
 
         // 4) Validate role
         if (!Enum.TryParse<UserRole>(dto.Role, true, out var role))
-            return ApiResponse<object>.Fail("ROLE_INVALID", "Role phải là Admin/Company/Driver/Rider.");
+            return ApiResponse<object>.Fail("ROLE_INVALID", "Role must be Admin/Company/Driver/Rider.");
 
         // 5) Unique email (case-insensitive)
         var exists = await _db.Users.AnyAsync(x => x.Email == email);
@@ -71,10 +78,16 @@ public class AuthController : ControllerBase
         return ApiResponse<object>.Ok(new { message = "OTP sent to email (mock: 123456)" });
     }
 
+    /// <summary>
+    /// Verify the OTP (mock 123456) and receive a JWT.
+    /// </summary>
     [AllowAnonymous]
     [HttpPost("verify-otp")]
     [Consumes("application/json")]
-    [SwaggerOperation(Summary = "Verify OTP", Description = "Nhập OTP 123456 để lấy JWT.")]
+    [SwaggerOperation(
+        Summary = "Verify OTP",
+        Description = "Enter OTP 123456 to obtain JWT."
+    )]
     public async Task<ActionResult<ApiResponse<object>>> VerifyOtp([FromBody] VerifyOtpDto dto)
     {
         if (dto.Otp != "123456")
@@ -85,13 +98,18 @@ public class AuthController : ControllerBase
 
         var token = IssueJwt(user);
         return ApiResponse<object>.Ok(new { token, profile = new { user.Id, user.Email, user.Role } });
-        // return ApiResponse<object>.Ok(new { token, user });
     }
 
+    /// <summary>
+    /// Login with email/password (seed default password is "password").
+    /// </summary>
     [AllowAnonymous]
     [HttpPost("login")]
     [Consumes("application/json")]
-    [SwaggerOperation(Summary = "Login", Description = "Đăng nhập bằng email/password (seed mặc định password = \"password\").")]
+    [SwaggerOperation(
+        Summary = "Login",
+        Description = "Login with email/password (seed default password = \"password\")."
+    )]
     public async Task<ActionResult<ApiResponse<object>>> Login([FromBody] LoginDto dto)
     {
         var user = await _db.Users.FirstOrDefaultAsync(u => u.Email == dto.Email);
@@ -103,9 +121,13 @@ public class AuthController : ControllerBase
 
         var token = IssueJwt(user);
         return ApiResponse<object>.Ok(new { token, profile = new { user.Id, user.Email, user.Role } });
+        // Alternative: include entire user document if your contract allows it.
         // return ApiResponse<object>.Ok(new { token, user });
     }
 
+    /// <summary>
+    /// Issues a signed JWT for the given user (7-day expiry).
+    /// </summary>
     private string IssueJwt(User user)
     {
         var key = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(_config["Jwt:Key"]!));
@@ -124,8 +146,14 @@ public class AuthController : ControllerBase
         return new JwtSecurityTokenHandler().WriteToken(jwt);
     }
 
+    /// <summary>
+    /// Generates a 24-char ID (hex-like) from a GUID (first 24 chars).
+    /// </summary>
     private static string NewId() => Guid.NewGuid().ToString("N")[..24];
-    // Helper: email có dấu chấm trong host & không bắt đầu/kết thúc bằng dấu chấm
+
+    /// <summary>
+    /// Helper: email must contain a dot in the host and must not start/end with a dot.
+    /// </summary>
     private static bool IsValidEmail(string email)
     {
         try
@@ -133,11 +161,10 @@ public class AuthController : ControllerBase
             var addr = new MailAddress(email);
             var host = addr.Host;
             if (string.IsNullOrWhiteSpace(host)) return false;
-            if (!host.Contains('.')) return false;         // chặn "example" không có TLD
+            if (!host.Contains('.')) return false;         // block hosts with no TLD like "example"
             if (host.StartsWith('.') || host.EndsWith('.')) return false;
             return addr.Address == email;
         }
         catch { return false; }
     }
-
 }

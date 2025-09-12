@@ -38,15 +38,15 @@ builder.Services.AddSwaggerGen(c =>
         Description = "Company — Driver — Rider"
     });
 
-    // Hiển thị [SwaggerOperation]/[SwaggerTag]
+    // Show [SwaggerOperation]/[SwaggerTag] metadata in UI
     c.EnableAnnotations();
 
-    // Đọc XML comments từ assembly này (cần GenerateDocumentationFile=true)
+    // Load XML documentation from this assembly (requires GenerateDocumentationFile=true)
     var xmlFile = $"{Assembly.GetExecutingAssembly().GetName().Name}.xml";
     var xmlPath = Path.Combine(AppContext.BaseDirectory, xmlFile);
     if (File.Exists(xmlPath)) c.IncludeXmlComments(xmlPath);
 
-    // Đặt tên schema ổn định & sắp xếp endpoint
+    // Stable schema ids & deterministic endpoint ordering
     c.CustomSchemaIds(t => t.FullName);
     c.OrderActionsBy(d => $"{d.GroupName}_{d.RelativePath}_{d.HttpMethod}");
     c.SupportNonNullableReferenceTypes();
@@ -59,7 +59,7 @@ builder.Services.AddSwaggerGen(c =>
         Scheme = "bearer",
         BearerFormat = "JWT",
         In = ParameterLocation.Header,
-        Description = "Nhập **chỉ** JWT (không cần gõ chữ 'Bearer '): nhấn Authorize rồi dán token."
+        Description = "Paste the **JWT only** (no need to type 'Bearer '). Click Authorize and paste the token."
     };
     c.AddSecurityDefinition("Bearer", jwtScheme);
 
@@ -88,6 +88,7 @@ builder.Services.AddAuthentication(options =>
     };
 });
 
+// CORS: allow any origin/headers/methods (relaxed; tighten for production)
 builder.Services.AddCors(opt =>
 {
     opt.AddDefaultPolicy(p => p.AllowAnyHeader().AllowAnyMethod().AllowAnyOrigin());
@@ -101,17 +102,16 @@ app.UseSwaggerUI(o =>
     o.DocumentTitle = "MVP API";
     o.SwaggerEndpoint("/swagger/v1/swagger.json", "MVP API v1");
 
-    // UI giống ảnh: list gọn, có filter, có thời gian xử lý, ẩn Schemas panel
+    // Compact list view, enable filter & request duration, hide Schemas panel
     o.DocExpansion(DocExpansion.List);
     o.EnableFilter();
     o.DisplayRequestDuration();
     o.DefaultModelsExpandDepth(-1);
 
-    // (tuỳ chọn) giữ mặc định màu xanh/định dạng như ảnh
-    // Nếu bạn đã có CSS custom làm vỡ layout, hãy tạm bỏ InjectStylesheet.
+    // (optional) keep default look & feel; if your custom CSS breaks layout, remove InjectStylesheet.
     o.InjectStylesheet("/swagger-ui/custom.css");
 
-    // Bật "Try it out" ngay khi mở (tùy thích)
+    // Enable "Try it out" by default (optional)
     o.ConfigObject.AdditionalItems["tryItOutEnabled"] = true;
 });
 

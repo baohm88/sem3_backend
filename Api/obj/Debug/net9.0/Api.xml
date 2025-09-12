@@ -127,6 +127,116 @@
         <member name="P:Api.Contracts.Companies.AddServiceDto.IsActive">
             <example>true</example>
         </member>
+        <member name="T:Api.Contracts.Companies.CompanyDriverDto">
+            <summary>
+            Lightweight DTO describing a company's driver as exposed to clients.
+            </summary>
+        </member>
+        <member name="P:Api.Contracts.Companies.CompanyDriverDto.UserId">
+            <summary>
+            Associated user identifier of the driver.
+            </summary>
+        </member>
+        <member name="P:Api.Contracts.Companies.CompanyDriverDto.FullName">
+            <summary>
+            Driver's full display name.
+            </summary>
+        </member>
+        <member name="P:Api.Contracts.Companies.CompanyDriverDto.Phone">
+            <summary>
+            Optional phone number (may be hidden for privacy).
+            </summary>
+        </member>
+        <member name="P:Api.Contracts.Companies.CompanyDriverDto.Bio">
+            <summary>
+            Short bio or introduction.
+            </summary>
+        </member>
+        <member name="P:Api.Contracts.Companies.CompanyDriverDto.ImgUrl">
+            <summary>
+            Optional profile image URL.
+            </summary>
+        </member>
+        <member name="P:Api.Contracts.Companies.CompanyDriverDto.Rating">
+            <summary>
+            Aggregate rating (e.g., 0.0–5.0).
+            </summary>
+        </member>
+        <member name="P:Api.Contracts.Companies.CompanyDriverDto.Skills">
+            <summary>
+            Optional skills (e.g., serialized JSON or comma-separated tags).
+            </summary>
+        </member>
+        <member name="P:Api.Contracts.Companies.CompanyDriverDto.Location">
+            <summary>
+            Optional textual location (city/area).
+            </summary>
+        </member>
+        <member name="P:Api.Contracts.Companies.CompanyDriverDto.IsAvailable">
+            <summary>
+            Whether the driver is currently available for jobs.
+            </summary>
+        </member>
+        <member name="P:Api.Contracts.Companies.CompanyDriverDto.JoinedAt">
+            <summary>
+            Timestamp when the driver joined the company (server time/UTC per system policy).
+            </summary>
+        </member>
+        <member name="P:Api.Contracts.Companies.CompanyDriverDto.BaseSalaryCents">
+            <summary>
+            Base salary in cents (integer minor units).
+            </summary>
+        </member>
+        <member name="T:Api.Contracts.Companies.CompanyPublicDto">
+            <summary>
+            Public-facing DTO for company data exposed to clients.
+            </summary>
+        </member>
+        <member name="P:Api.Contracts.Companies.CompanyPublicDto.Company">
+            <summary>
+            Base company entity.
+            </summary>
+        </member>
+        <member name="P:Api.Contracts.Companies.CompanyPublicDto.Rating">
+            <summary>
+            Aggregate rating (e.g., 0.0–5.0).
+            </summary>
+        </member>
+        <member name="P:Api.Contracts.Companies.CompanyPublicDto.ActiveServicesCount">
+            <summary>
+            Number of currently active services provided by the company.
+            </summary>
+        </member>
+        <member name="P:Api.Contracts.Companies.CompanyPublicDto.DriversCount">
+            <summary>
+            Number of drivers associated with the company.
+            </summary>
+        </member>
+        <member name="P:Api.Contracts.Companies.CompanyPublicDto.Services">
+            <summary>
+            Public list of services offered by the company.
+            </summary>
+        </member>
+        <member name="P:Api.Contracts.Companies.CompanyPublicDto.Page">
+            <summary>
+            1-based current page index (optional pagination metadata).
+            </summary>
+        </member>
+        <member name="P:Api.Contracts.Companies.CompanyPublicDto.Size">
+            <summary>
+            Page size in items per page (optional pagination metadata).
+            </summary>
+        </member>
+        <member name="P:Api.Contracts.Companies.CompanyPublicDto.TotalPages">
+            <summary>
+            Total number of pages (optional pagination metadata).
+            </summary>
+        </member>
+        <member name="P:Api.Contracts.Companies.CompanyPublicDto.TotalItems">
+            <summary>
+            Total number of items across all pages (optional pagination metadata).
+            </summary>
+        </member>
         <member name="P:Api.Contracts.Companies.InviteDriverDto.DriverUserId">
             <example>68a000000000000000000007</example>
         </member>
@@ -145,14 +255,41 @@
         <member name="P:Api.Contracts.Companies.PayMembershipDto.IdempotencyKey">
             <example>membership-2025-09</example>
         </member>
+        <member name="T:Api.Contracts.Companies.PaySalaryDto">
+            <summary>
+            Payload for paying a driver's salary from a company wallet.
+            </summary>
+        </member>
         <member name="P:Api.Contracts.Companies.PaySalaryDto.DriverUserId">
+            <summary>
+            Target driver's user identifier.
+            </summary>
             <example>68a000000000000000000005</example>
         </member>
         <member name="P:Api.Contracts.Companies.PaySalaryDto.AmountCents">
+            <summary>
+            Amount in minor units (cents).
+            Must be a positive integer.
+            </summary>
             <example>150000</example>
         </member>
         <member name="P:Api.Contracts.Companies.PaySalaryDto.IdempotencyKey">
+            <summary>
+            Optional idempotency key to prevent duplicate payments.
+            </summary>
             <example>salary-2025-08-30-01</example>
+        </member>
+        <member name="P:Api.Contracts.Companies.PaySalaryDto.Period">
+            <summary>
+            Salary period in "YYYY-MM" format (optional, defaults to the current UTC month).
+            </summary>
+            <example>2025-08</example>
+        </member>
+        <member name="P:Api.Contracts.Companies.PaySalaryDto.Note">
+            <summary>
+            Optional note or memo for this payment.
+            </summary>
+            <example>August base salary</example>
         </member>
         <member name="P:Api.Contracts.Companies.TopupDto.AmountCents">
             <example>500000</example>
@@ -172,11 +309,21 @@
         <member name="P:Api.Contracts.Companies.UpdateCompanyDto.IsActive">
             <example>true</example>
         </member>
+        <member name="T:Api.Contracts.Companies.WithdrawDto">
+            <summary>
+            Payload for withdrawing money from a company wallet.
+            </summary>
+        </member>
         <member name="P:Api.Contracts.Companies.WithdrawDto.AmountCents">
+            <summary>
+            Amount in minor units (cents). Must be a positive integer.
+            </summary>
             <example>50000</example>
         </member>
         <member name="P:Api.Contracts.Companies.WithdrawDto.IdempotencyKey">
-            <summary>Idempotency key để chống gửi trùng</summary>
+            <summary>
+            Idempotency key to prevent duplicate submissions.
+            </summary>
         </member>
         <member name="P:Api.Contracts.Drivers.ApplyCompanyDto.CompanyId">
             <example>68a000000000000000000010</example>
@@ -238,20 +385,91 @@
         <member name="P:Api.Contracts.Riders.TopupDto.IdempotencyKey">
             <example>rider-topup-2025-08-30-01</example>
         </member>
+        <member name="T:Api.Contracts.Riders.UpdateRiderDto">
+            <summary>
+            Payload for updating a Rider's public profile fields.
+            All properties are optional; only provided fields will be updated.
+            </summary>
+        </member>
         <member name="P:Api.Contracts.Riders.UpdateRiderDto.FullName">
-            <summary>Họ tên Rider</summary>
+            <summary>Rider's full name.</summary>
         </member>
         <member name="P:Api.Contracts.Riders.UpdateRiderDto.Phone">
-            <summary>Số điện thoại</summary>
+            <summary>Phone number.</summary>
         </member>
         <member name="P:Api.Contracts.Riders.UpdateRiderDto.ImgUrl">
-            <summary>Ảnh đại diện URL</summary>
+            <summary>Avatar image URL.</summary>
         </member>
         <member name="P:Api.Contracts.Riders.WithdrawDto.AmountCents">
             <example>50000</example>
         </member>
         <member name="P:Api.Contracts.Riders.WithdrawDto.IdempotencyKey">
             <example>rider-withdraw-2025-08-30-01</example>
+        </member>
+        <member name="M:Api.Controllers.AuthController.Register(Api.Contracts.Auth.RegisterDto)">
+            <summary>
+            Register a user with email and role; responds with OTP sent notice (mocked).
+            </summary>
+        </member>
+        <member name="M:Api.Controllers.AuthController.VerifyOtp(Api.Contracts.Auth.VerifyOtpDto)">
+            <summary>
+            Verify the OTP (mock 123456) and receive a JWT.
+            </summary>
+        </member>
+        <member name="M:Api.Controllers.AuthController.Login(Api.Contracts.Auth.LoginDto)">
+            <summary>
+            Login with email/password (seed default password is "password").
+            </summary>
+        </member>
+        <member name="M:Api.Controllers.AuthController.IssueJwt(Domain.Entities.User)">
+            <summary>
+            Issues a signed JWT for the given user (7-day expiry).
+            </summary>
+        </member>
+        <member name="M:Api.Controllers.AuthController.NewId">
+            <summary>
+            Generates a 24-char ID (hex-like) from a GUID (first 24 chars).
+            </summary>
+        </member>
+        <member name="M:Api.Controllers.AuthController.IsValidEmail(System.String)">
+            <summary>
+            Helper: email must contain a dot in the host and must not start/end with a dot.
+            </summary>
+        </member>
+        <member name="M:Api.Controllers.CompaniesController.GetUserId">
+            <summary>Resolve current user id from claims.</summary>
+        </member>
+        <member name="M:Api.Controllers.CompaniesController.Forbidden``1">
+            <summary>Convenience Forbidden response.</summary>
+        </member>
+        <member name="M:Api.Controllers.CompaniesController.GetOwnedCompanyAsync(System.String)">
+            <summary>Get company by id owned by current user; null otherwise.</summary>
+        </member>
+        <member name="M:Api.Controllers.CompaniesController.GetCompanyOfCurrentUserAsync">
+            <summary>Get the company of current user by OwnerUserId.</summary>
+        </member>
+        <member name="M:Api.Controllers.DriversController.GetUserId">
+            <summary>Resolve current user id from claims.</summary>
+        </member>
+        <member name="M:Api.Controllers.DriversController.Forbidden``1">
+            <summary>Convenience Forbidden response.</summary>
+        </member>
+        <member name="M:Api.Controllers.DriversController.GetOwnedDriverAsync(System.String)">
+            <summary>Get driver profile if it belongs to the current user; otherwise null.</summary>
+        </member>
+        <member name="M:Api.Controllers.DriversController.NormalizeSkills(System.String)">
+            <summary>
+            Normalize skills input: accept JSON array or CSV; trim, deduplicate (case-insensitive), re-serialize as JSON array.
+            </summary>
+        </member>
+        <member name="M:Api.Controllers.RidersController.GetUserId">
+            <summary>Resolve current user id from JWT/claims.</summary>
+        </member>
+        <member name="M:Api.Controllers.RidersController.Forbidden``1">
+            <summary>Convenience Forbidden response.</summary>
+        </member>
+        <member name="M:Api.Controllers.RidersController.GetOwnedRiderAsync(System.String)">
+            <summary>Get rider profile if it belongs to the current user; otherwise null.</summary>
         </member>
         <member name="P:UpdateServiceDto.Title">
             <example>Premium Airport Pickup</example>
