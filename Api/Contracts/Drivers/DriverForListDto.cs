@@ -6,6 +6,7 @@ public class DriverForListDto
   public string Id { get; set; } = default!;
   public string UserId { get; set; } = default!;
   public string FullName { get; set; } = default!;
+  public string Email { get; set; } = default!;
   public string? Phone { get; set; }
   public string? Bio { get; set; }
   public string? ImgUrl { get; set; }
@@ -15,7 +16,5 @@ public class DriverForListDto
   public bool IsAvailable { get; set; }
   public DateTime CreatedAt { get; set; }
   public DateTime UpdatedAt { get; set; }
-
-  // NEW
   public bool IsHired { get; set; }
 }

@@ -99,11 +99,13 @@ public class DriversController : ControllerBase
     var p = await _db.DriverProfiles.FirstOrDefaultAsync(x => x.UserId == uid);
     if (p == null)
     {
+      var myEmail = await _db.Users.Where(u => u.Id == uid).Select(u => u.Email).FirstAsync();
       p = new DriverProfile
       {
         Id = NewId(),
         UserId = uid,
         FullName = "New Driver",
+        Email = myEmail,
         Phone = null,
         Bio = null,
         Rating = 0,
@@ -134,11 +136,13 @@ public class DriversController : ControllerBase
     var p = await _db.DriverProfiles.FirstOrDefaultAsync(x => x.UserId == uid);
     if (p == null)
     {
+      var myEmail = await _db.Users.Where(u => u.Id == uid).Select(u => u.Email).FirstAsync();
       p = new DriverProfile
       {
         Id = NewId(),
         UserId = uid,
         FullName = dto.FullName ?? "New Driver",
+        Email = myEmail,
         Phone = dto.Phone,
         Bio = null,
         Rating = 0,
@@ -246,6 +250,7 @@ public class DriversController : ControllerBase
         Id = d.Id,
         UserId = d.UserId,
         FullName = d.FullName,
+        Email = d.Email,
         Phone = d.Phone,
         Bio = d.Bio,
         ImgUrl = d.ImgUrl,

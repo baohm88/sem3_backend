@@ -46,6 +46,7 @@ public class DriverProfile
   public string Id { get; set; } = default!;
   public string UserId { get; set; } = default!;
   public string FullName { get; set; } = default!;
+  public string Email { get; set; } = default!;
   public string? Phone { get; set; }
   public string? Bio { get; set; }
   public string? ImgUrl { get; set; }              // avatar
@@ -138,11 +139,16 @@ public class Order
 public class Review
 {
   public string Id { get; set; } = default!;
-  public string OrderId { get; set; } = default!;
+  public string CompanyId { get; set; } = default!;
+  public Company Company { get; set; } = default!;
+
+  public string? OrderId { get; set; }           // now nullable
+  public Order? Order { get; set; }
+
   public string RiderUserId { get; set; } = default!;
   public int Rating { get; set; }
   public string? Comment { get; set; }
-  public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
+  public DateTime CreatedAt { get; set; }
 }
 
 public class Wallet

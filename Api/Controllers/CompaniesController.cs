@@ -877,21 +877,64 @@ public class CompaniesController : ControllerBase
   // ========= Applications =========
   [Authorize(Roles = "Company")]
   [HttpGet("{id}/applications")]
-  [SwaggerOperation(Summary = "List Job Applications")]
+  [SwaggerOperation(
+    Summary = "List Job Applications",
+    Description = "Server-side filtering/sorting/pagination. Sort by createdAt|status|expiresAt with :asc|desc."
+  )]
   [ProducesResponseType(typeof(ApiResponse<PageResult<JobApplication>>), 200)]
   public async Task<ActionResult<ApiResponse<PageResult<JobApplication>>>> ListApplications(
-      [FromRoute] string id, [FromQuery] int page = 1, [FromQuery] int size = 10, [FromQuery] string? status = null)
+      [FromRoute] string id,
+      [FromQuery] int page = 1,
+      [FromQuery] int size = 10,
+      [FromQuery] string? status = null,
+      [FromQuery] string? sort = "createdAt:desc",
+      [FromQuery] string? driverUserId = null // optional: filter a specific driver
+  )
   {
     var company = await GetOwnedCompanyAsync(id);
     if (company == null) return Forbidden<PageResult<JobApplication>>();
 
-    var q = _db.JobApplications.Where(a => a.CompanyId == id);
-    if (!string.IsNullOrWhiteSpace(status) && Enum.TryParse<ApplyStatus>(status, true, out var st))
-      q = q.Where(a => a.Status == st);
+    // Normalize paging
+    if (page < 1) page = 1;
+    if (size < 1) size = 10;
 
-    q = q.OrderByDescending(a => a.CreatedAt);
+    var q = _db.JobApplications.Where(a => a.CompanyId == id);
+
+    // Filter by status (single)
+    if (!string.IsNullOrWhiteSpace(status) &&
+        Enum.TryParse<ApplyStatus>(status, true, out var st))
+    {
+      q = q.Where(a => a.Status == st);
+    }
+
+    // Optional: filter by driver
+    if (!string.IsNullOrWhiteSpace(driverUserId))
+    {
+      q = q.Where(a => a.DriverUserId == driverUserId);
+    }
+
+    // Server-side sort: createdAt|status|expiresAt : asc|desc
+    var s = (sort ?? "createdAt:desc").Split(':');
+    var field = s[0].Trim();
+    var dir = (s.Length > 1 ? s[1] : "desc").Trim().ToLowerInvariant();
+
+    q = (field, dir) switch
+    {
+      ("createdAt", "asc") => q.OrderBy(a => a.CreatedAt),
+      ("createdAt", "desc") => q.OrderByDescending(a => a.CreatedAt),
+
+      ("status", "asc") => q.OrderBy(a => a.Status),
+      ("status", "desc") => q.OrderByDescending(a => a.Status),
+
+      ("expiresAt", "asc") => q.OrderBy(a => a.ExpiresAt),
+      ("expiresAt", "desc") => q.OrderByDescending(a => a.ExpiresAt),
+
+      _ => q.OrderByDescending(a => a.CreatedAt) // default fallback
+    };
+
     var total = await q.CountAsync();
     var items = await q.Skip((page - 1) * size).Take(size).ToListAsync();
+
     return ApiResponse<PageResult<JobApplication>>.Ok(new PageResult<JobApplication>
     {
       page = page,
@@ -904,38 +947,59 @@ public class CompaniesController : ControllerBase
     });
   }
 
+
+  // [Authorize(Roles = "Company")]
   [Authorize(Roles = "Company")]
   [HttpPost("{id}/applications/{appId}/approve")]
   [SwaggerOperation(Summary = "Approve Job Application")]
   [ProducesResponseType(typeof(ApiResponse<object>), 200)]
-  public async Task<ActionResult<ApiResponse<object>>> ApproveApplication([FromRoute] string id, [FromRoute] string appId)
+  public async Task<ActionResult<ApiResponse<object>>> ApproveApplication(
+    [FromRoute] string id, [FromRoute] string appId)
   {
     var company = await GetOwnedCompanyAsync(id);
     if (company == null) return Forbidden<object>();
 
     var app = await _db.JobApplications.FirstOrDefaultAsync(a => a.Id == appId && a.CompanyId == id);
     if (app == null) return ApiResponse<object>.Fail("NOT_FOUND", "Application does not exist.");
-    if (app.Status != ApplyStatus.Applied) return ApiResponse<object>.Fail("INVALID_STATE", "Only allowed when status is Applied.");
+    if (app.Status != ApplyStatus.Applied)
+      return ApiResponse<object>.Fail("INVALID_STATE", "Only allowed when status is Applied.");
 
-    app.Status = ApplyStatus.Accepted;
+    // Optional: block if driver already hired anywhere else
+    var alreadyHired = await _db.CompanyDriverRelations.AnyAsync(r => r.DriverUserId == app.DriverUserId);
+    if (alreadyHired)
+      return ApiResponse<object>.Fail("ALREADY_EMPLOYED", "Driver is already employed by another company.");
 
-    var exists = await _db.CompanyDriverRelations.AnyAsync(r => r.CompanyId == id && r.DriverUserId == app.DriverUserId);
-    if (!exists)
+    await using var tx = await _db.Database.BeginTransactionAsync();
+    try
     {
-      _db.CompanyDriverRelations.Add(new CompanyDriverRelation
-      {
-        Id = NewId(),
-        CompanyId = id,
-        DriverUserId = app.DriverUserId,
-        BaseSalaryCents = 0,
-        CreatedAt = DateTime.UtcNow,
-        UpdatedAt = DateTime.UtcNow
-      });
-    }
+      app.Status = ApplyStatus.Accepted;
 
-    await _db.SaveChangesAsync();
-    return ApiResponse<object>.Ok(new { app.Id, app.Status });
+      var exists = await _db.CompanyDriverRelations
+        .AnyAsync(r => r.CompanyId == id && r.DriverUserId == app.DriverUserId);
+      if (!exists)
+      {
+        _db.CompanyDriverRelations.Add(new CompanyDriverRelation
+        {
+          Id = NewId(),
+          CompanyId = id,
+          DriverUserId = app.DriverUserId,
+          BaseSalaryCents = 0,
+          CreatedAt = DateTime.UtcNow,
+          UpdatedAt = DateTime.UtcNow
+        });
+      }
+
+      await _db.SaveChangesAsync();
+      await tx.CommitAsync();
+      return ApiResponse<object>.Ok(new { app.Id, app.Status });
+    }
+    catch
+    {
+      await tx.RollbackAsync();
+      return ApiResponse<object>.Fail("INTERNAL_ERROR", "Failed to approve application.");
+    }
   }
+
 
   [Authorize(Roles = "Company")]
   [HttpPost("{id}/applications/{appId}/reject")]
@@ -1400,5 +1464,100 @@ public class CompaniesController : ControllerBase
     };
 
     return ApiResponse<CompanyPublicDto>.Ok(dto);
+  }
+  
+
+  // --- Reviews: public list ---
+  [AllowAnonymous]
+  [HttpGet("{companyId}/reviews")]
+  [SwaggerOperation(Summary = "Public: List reviews for a company")]
+  [ProducesResponseType(typeof(ApiResponse<PageResult<CompanyReviewListItemDto>>), 200)]
+  public async Task<ActionResult<ApiResponse<PageResult<CompanyReviewListItemDto>>>> ListCompanyReviews(
+    [FromRoute] string companyId,
+    [FromQuery] int page = 1,
+    [FromQuery] int size = 10)
+  {
+    if (page < 1) page = 1;
+    if (size < 1) size = 10;
+
+    var q = _db.Reviews.Where(r => r.CompanyId == companyId);
+
+    var total = await q.CountAsync();
+
+    var items = await q
+      .OrderByDescending(r => r.CreatedAt)
+      .Skip((page - 1) * size)
+      .Take(size)
+      .Select(r => new CompanyReviewListItemDto
+      {
+        Id = r.Id,
+        Rating = r.Rating,
+        Comment = r.Comment,
+        CreatedAt = r.CreatedAt,
+        UserId = r.RiderUserId,
+        UserName =
+          _db.RiderProfiles.Where(p => p.UserId == r.RiderUserId).Select(p => p.FullName).FirstOrDefault()
+          ?? _db.DriverProfiles.Where(p => p.UserId == r.RiderUserId).Select(p => p.FullName).FirstOrDefault()
+          ?? _db.Companies.Where(c => c.OwnerUserId == r.RiderUserId).Select(c => c.Name).FirstOrDefault()
+          ?? _db.Users.Where(u => u.Id == r.RiderUserId).Select(u => u.Email).FirstOrDefault(),
+
+        UserImgUrl =
+          _db.RiderProfiles.Where(p => p.UserId == r.RiderUserId).Select(p => p.ImgUrl).FirstOrDefault()
+          ?? _db.DriverProfiles.Where(p => p.UserId == r.RiderUserId).Select(p => p.ImgUrl).FirstOrDefault()
+          ?? _db.Companies.Where(c => c.OwnerUserId == r.RiderUserId).Select(c => c.ImgUrl).FirstOrDefault(),
+      })
+      .ToListAsync();
+
+    return ApiResponse<PageResult<CompanyReviewListItemDto>>.Ok(new PageResult<CompanyReviewListItemDto>
+    {
+      page = page,
+      size = size,
+      totalItems = total,
+      totalPages = (int)Math.Ceiling(total / (double)size),
+      hasNext = page * size < total,
+      hasPrev = page > 1,
+      items = items
+    });
+  }
+
+
+  // --- Reviews: create (any logged-in user for now) ---
+  [Authorize]
+  [HttpPost("{companyId}/reviews")]
+  [SwaggerOperation(Summary = "Create review for a company")]
+  [ProducesResponseType(typeof(ApiResponse<object>), 200)]
+  public async Task<ActionResult<ApiResponse<object>>> CreateCompanyReview(
+    [FromRoute] string companyId,
+    [FromBody] CreateCompanyReviewDto dto)
+  {
+    var uid = GetUserId();
+    if (uid == null) return ApiResponse<object>.Fail("UNAUTHORIZED", "Missing user id.");
+
+    var r = dto?.Rating ?? 0;
+    if (r < 1 || r > 5)
+      return ApiResponse<object>.Fail("VALIDATION", "Rating must be between 1 and 5.");
+
+    // Nếu rider đã có order với company này thì gắn vào; không thì để null
+    var existingOrderId = await _db.Orders
+      .Where(o => o.CompanyId == companyId && o.RiderUserId == uid)
+      .OrderByDescending(o => o.CreatedAt)
+      .Select(o => o.Id)
+      .FirstOrDefaultAsync();
+
+    var review = new Review
+    {
+      Id = Guid.NewGuid().ToString("N")[..24],
+      CompanyId = companyId,
+      OrderId = string.IsNullOrEmpty(existingOrderId) ? null : existingOrderId,
+      RiderUserId = uid,
+      Rating = r,
+      Comment = string.IsNullOrWhiteSpace(dto!.Comment) ? null : dto!.Comment!.Trim(),
+      CreatedAt = DateTime.UtcNow
+    };
+
+    _db.Reviews.Add(review);
+    await _db.SaveChangesAsync();
+
+    return ApiResponse<object>.Ok(new { review.Id });
   }
 }
