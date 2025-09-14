@@ -7,6 +7,8 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.IdentityModel.Tokens;
 using Microsoft.OpenApi.Models;
 using System.Text.Json.Serialization;
+using System.Security.Claims;
+using System.IdentityModel.Tokens.Jwt;
 
 using System.Reflection;
 using Swashbuckle.AspNetCore.SwaggerUI;

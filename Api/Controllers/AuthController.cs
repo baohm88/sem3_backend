@@ -93,8 +93,12 @@ public class AuthController : ControllerBase
         if (dto.Otp != "123456")
             return ApiResponse<object>.Fail("OTP_INVALID", "Invalid OTP");
 
-        var user = await _db.Users.FirstOrDefaultAsync(u => u.Email == dto.Email);
+        var email = (dto.Email ?? "").Trim().ToLowerInvariant();
+        var user = await _db.Users.AsNoTracking().FirstOrDefaultAsync(u => u.Email == email);
         if (user == null) return ApiResponse<object>.Fail("NOT_FOUND", "User not found");
+
+        if (!user.IsActive)
+            return ApiResponse<object>.Fail("ACCOUNT_DISABLED", "This account is deactivated.");
 
         var token = IssueJwt(user);
         return ApiResponse<object>.Ok(new { token, profile = new { user.Id, user.Email, user.Role } });
@@ -112,17 +116,23 @@ public class AuthController : ControllerBase
     )]
     public async Task<ActionResult<ApiResponse<object>>> Login([FromBody] LoginDto dto)
     {
-        var user = await _db.Users.FirstOrDefaultAsync(u => u.Email == dto.Email);
-        if (user == null) return ApiResponse<object>.Fail("INVALID_CREDENTIALS", "Invalid credentials");
+        var email = (dto.Email ?? "").Trim().ToLowerInvariant();
+        var user = await _db.Users.FirstOrDefaultAsync(u => u.Email == email);
+        if (user == null)
+            return ApiResponse<object>.Fail("INVALID_CREDENTIALS", "Invalid credentials");
+
+        // optional: gate the "password" fallback to development only
+        var devPwdBypass = Environment.GetEnvironmentVariable("ASPNETCORE_ENVIRONMENT") == "Development";
 
         var ok = BCrypt.Net.BCrypt.Verify(dto.Password, user.PasswordHash);
-        if (!ok && dto.Password != "password")
+        if (!ok && !(devPwdBypass && dto.Password == "password"))
             return ApiResponse<object>.Fail("INVALID_CREDENTIALS", "Invalid credentials");
+
+        if (!user.IsActive)
+            return ApiResponse<object>.Fail("ACCOUNT_DISABLED", "This account is deactivated.");
 
         var token = IssueJwt(user);
         return ApiResponse<object>.Ok(new { token, profile = new { user.Id, user.Email, user.Role } });
-        // Alternative: include entire user document if your contract allows it.
-        // return ApiResponse<object>.Ok(new { token, user });
     }
 
     /// <summary>
